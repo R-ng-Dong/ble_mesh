@@ -20,9 +20,7 @@
 #include "rd_ble_mesh.h"
 
 
-#define TAG "EXAMPLE_MESH"
-
-#define CONFIG_MAX_NUM_ELEMENT  4
+#define TAG "EX_BLE_MESH"
 
 #define CID_ESP 0x0211
 #define RD_OPCODE_E0            ESP_BLE_MESH_MODEL_OP_3(0xE0, CID_ESP)
@@ -711,6 +709,7 @@ esp_err_t bluetooth_init(void)
     return ret;
 }
 
+static bool is_ble_mesh_init = false;
 /**
  * @brief hàm xử lý chính của chương trình
  * 
@@ -721,6 +720,7 @@ void rd_ble_mesh_init(void)
 
     ESP_LOGI(TAG, "Initializing...");
 
+#if !CONFIG_USE_SDK_ROGO
     err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -733,6 +733,7 @@ void rd_ble_mesh_init(void)
         ESP_LOGE(TAG, "esp32_bluetooth_init failed (err %d)", err);
         return;
     }
+#endif
 
     ble_mesh_get_dev_uuid(dev_uuid);
     // init_scene_values(); //NOTE init scene value
@@ -748,6 +749,53 @@ void rd_ble_mesh_init(void)
     else
     {
         printf("un provision\n");
+    }
+    is_ble_mesh_init= true;
+}
+
+void rd_continue_ble_mesh(void)
+{
+    if (!is_ble_mesh_init)
+    {
+        is_ble_mesh_init = true;
+        ESP_LOGW(TAG, "continue BLE mesh");
+
+        esp_err_t err = esp_ble_mesh_init(&provision, &composition);
+        if (err != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to initialize mesh stack");
+        }
+
+        if (esp_ble_mesh_node_is_provisioned())
+        {
+            printf("device provisioned\n");
+        }
+        else
+        {
+            printf("device un provisioned, esp_ble_mesh_node_prov_enable\n");
+            err = esp_ble_mesh_node_prov_enable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
+            vTaskDelay(pdMS_TO_TICKS(100));
+            if (err != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to enable mesh node");
+            }
+        }
+    }
+}
+
+void rd_suspend_ble_mesh(void)
+{
+    if (is_ble_mesh_init)
+    {
+        is_ble_mesh_init = false;
+        esp_ble_mesh_node_prov_disable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
+        esp_ble_mesh_deinit_param_t param = {
+            .erase_flash = false // hoặc true nếu muốn reset
+        };
+        esp_ble_mesh_deinit(&param);
+
+        ESP_LOGW(TAG, "suspend BLE mesh");
+
     }
 }
 

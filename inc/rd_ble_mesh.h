@@ -4,10 +4,15 @@
 #include "stdint.h"
 #include "esp_err.h"
 
+#define CONFIG_MAX_NUM_ELEMENT  3
+#define CONFIG_USE_SDK_ROGO     1
+
 typedef void *ble_mesh_cb_param_t; //ble_mesh_cb_param_t ~ (void *)
 typedef void (*rd_handle_message_opcode_vender)(ble_mesh_cb_param_t param);
 
 void      rd_ble_mesh_init(void);
+void      rd_continue_ble_mesh(void);
+void      rd_suspend_ble_mesh(void);
 void      rd_ble_mesh_register_cb_handle_mess_opcode_E0(rd_handle_message_opcode_vender cb);
 void      rd_ble_mesh_register_cb_handle_mess_opcode_E2(rd_handle_message_opcode_vender cb);
 void      ble_mesh_get_mess_buf(ble_mesh_cb_param_t param, uint8_t **buff, uint16_t *len);
