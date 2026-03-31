@@ -56,5 +56,6 @@ esp_err_t ble_mesh_rsp_state(uint8_t eleIdx, uint8_t onoff);
 void      ble_mesh_set_gw_addr(uint16_t addr);
 uint16_t  ble_mesh_get_gw_addr(void);
 void      ble_mesh_kick_out(void);
+bool      ble_mesh_is_provisioned(void);
 
 #endif /* _RD_BLE_MESH_H__ */

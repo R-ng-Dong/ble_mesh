@@ -358,9 +358,9 @@ static void example_change_led_state(esp_ble_mesh_model_t *model,
         for (i = 0; i < elem_count; i++) {
             if (ctx->recv_dst == (primary_addr + i)) {
                 //control 1 element
-                uint8_t ele_id = i; 
+                uint16_t data_send = (i<<8) | onoff; 
                 printf("control ele: %d, addr: 0x%04X, stt: %d\n", i, ctx->recv_dst, onoff);
-                esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_BY_UNICAST_ADDR, &ele_id, sizeof(ele_id), pdMS_TO_TICKS(10));
+                esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_BY_UNICAST_ADDR, &data_send, sizeof(data_send), pdMS_TO_TICKS(10));
             }
         }
     } else if (ESP_BLE_MESH_ADDR_IS_GROUP(ctx->recv_dst)) {
@@ -942,6 +942,9 @@ uint16_t ble_mesh_get_gw_addr(void){
     return GW_ADDR;
 }
 
+bool ble_mesh_is_provisioned(void){
+    return esp_ble_mesh_node_is_provisioned();
+}
 
 
 
