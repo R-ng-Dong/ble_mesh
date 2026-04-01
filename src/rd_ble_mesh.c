@@ -31,12 +31,18 @@
 #define ESP_BLE_MESH_VND_MODEL_ID_CLIENT    0x0000
 #define ESP_BLE_MESH_VND_MODEL_ID_SERVER    0x0001
 
+ESP_EVENT_DEFINE_BASE(EVENT_MESH_CONFIG_SERVER);
+ESP_EVENT_DEFINE_BASE(EVENT_MESH_PROVISIONING);
+ESP_EVENT_DEFINE_BASE(EVENT_MESH_GENERIC_MODEL);
+ESP_EVENT_DEFINE_BASE(EVENT_MESH_LIGHTING_MODEL);
+
 static rd_handle_message_opcode_vender handle_mess_opcode_E0 = NULL;
 static rd_handle_message_opcode_vender handle_mess_opcode_E2 = NULL;
 static void ble_mesh_add_group(uint16_t id_group);
 static void ble_mesh_del_group(uint16_t id_group);
 
 static uint16_t GW_ADDR = 0x0001;
+static esp_event_loop_handle_t ble_mesh_event_loop;
 // UUID thiết bị
 static uint8_t dev_uuid[16] = {0x28, 0x04};
 
@@ -331,7 +337,6 @@ static esp_ble_mesh_prov_t provision = {
  */
 static void prov_complete(uint16_t net_idx, uint16_t addr, uint8_t flags, uint32_t iv_index)
 {
-    printf("provision success!!\n");
     ESP_LOGI(TAG, "net_idx: 0x%04x, addr: 0x%04x", net_idx, addr);
     ESP_LOGI(TAG, "flags: 0x%02x, iv_index: 0x%08" PRIx32, flags, iv_index);
 }
@@ -353,17 +358,21 @@ static void example_change_led_state(esp_ble_mesh_model_t *model,
         for (i = 0; i < elem_count; i++) {
             if (ctx->recv_dst == (primary_addr + i)) {
                 //control 1 element
+                uint16_t data_send = (i<<8) | onoff; 
                 printf("control ele: %d, addr: 0x%04X, stt: %d\n", i, ctx->recv_dst, onoff);
+                esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_BY_UNICAST_ADDR, &data_send, sizeof(data_send), pdMS_TO_TICKS(10));
             }
         }
     } else if (ESP_BLE_MESH_ADDR_IS_GROUP(ctx->recv_dst)) {
         if (esp_ble_mesh_is_model_subscribed_to_group(model, ctx->recv_dst)) {
             // control group
             printf("control group addr: 0x%04X, stt: %d\n", ctx->recv_dst, onoff);
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_BY_GROUP_ADDR, NULL, 0, pdMS_TO_TICKS(10));
         }
     } else if (ctx->recv_dst == 0xFFFF) {
         // control all element
         printf("control all ele, stt: %d\n", onoff);
+        esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_ALL, NULL, 0, pdMS_TO_TICKS(10));
     }
 }
 
@@ -373,7 +382,7 @@ static void example_change_led_state(esp_ble_mesh_model_t *model,
  */
 void ble_mesh_kick_out(void)
 {
-    printf("BLE_MESH: kick out\n");
+    ESP_LOGW("BLE_MESH", "     =====>>> KICK OUT <<<=====     ");
     vTaskDelay(500 / portTICK_PERIOD_MS);
     esp_ble_mesh_node_local_reset(); // reset 
     vTaskDelay(500 / portTICK_PERIOD_MS);
@@ -447,11 +456,13 @@ static void example_ble_mesh_provisioning_cb(esp_ble_mesh_prov_cb_event_t event,
         ESP_LOGI(TAG, "ESP_BLE_MESH_NODE_PROV_COMPLETE_EVT");
         prov_complete(param->node_prov_complete.net_idx, param->node_prov_complete.addr, //NOTE event provision complete
             param->node_prov_complete.flags, param->node_prov_complete.iv_index);
+        esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_PROVISIONING, EVENT_MESH_PROVISION_COMPLETE, NULL, 0, pdMS_TO_TICKS(10));
         break;
     case ESP_BLE_MESH_NODE_PROV_RESET_EVT:
         ESP_LOGI(TAG, "ESP_BLE_MESH_NODE_PROV_RESET_EVT");
+        esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_PROVISIONING, EVENT_MESH_PROVISION_RESET, NULL, 0, pdMS_TO_TICKS(10));
         //NOTE reset => kick out
-        ble_mesh_kick_out();
+        // ble_mesh_kick_out();
         break;
     case ESP_BLE_MESH_NODE_SET_UNPROV_DEV_NAME_COMP_EVT:
         ESP_LOGI(TAG, "ESP_BLE_MESH_NODE_SET_UNPROV_DEV_NAME_COMP_EVT, err_code %d", param->node_set_unprov_dev_name_comp.err_code);
@@ -480,6 +491,7 @@ static void example_ble_mesh_config_server_cb(esp_ble_mesh_cfg_server_cb_event_t
                      param->value.state_change.appkey_add.net_idx,
                      param->value.state_change.appkey_add.app_idx);
             ESP_LOG_BUFFER_HEX("AppKey", param->value.state_change.appkey_add.app_key, 16);
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_ADD_APP_KEY, NULL, 0, pdMS_TO_TICKS(10));
             break;
         case ESP_BLE_MESH_MODEL_OP_MODEL_APP_BIND:
             ESP_LOGI(TAG, "ESP_BLE_MESH_MODEL_OP_MODEL_APP_BIND");
@@ -488,6 +500,7 @@ static void example_ble_mesh_config_server_cb(esp_ble_mesh_cfg_server_cb_event_t
                      param->value.state_change.mod_app_bind.app_idx,
                      param->value.state_change.mod_app_bind.company_id,
                      param->value.state_change.mod_app_bind.model_id);
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_BIND_ALL, NULL, 0, pdMS_TO_TICKS(10));
             break;
         case ESP_BLE_MESH_MODEL_OP_MODEL_SUB_ADD:
             ESP_LOGI(TAG, "ESP_BLE_MESH_MODEL_OP_MODEL_SUB_ADD");
@@ -496,12 +509,15 @@ static void example_ble_mesh_config_server_cb(esp_ble_mesh_cfg_server_cb_event_t
                      param->value.state_change.mod_sub_add.sub_addr,
                      param->value.state_change.mod_sub_add.company_id,
                      param->value.state_change.mod_sub_add.model_id);
+            uint16_t sub_addr = param->value.state_change.mod_sub_add.sub_addr;
             ble_mesh_add_group(param->value.state_change.mod_sub_add.sub_addr);
-            
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_SUB_ADD_GROUP, &sub_addr, sizeof(sub_addr), pdMS_TO_TICKS(10));
             break;
         case ESP_BLE_MESH_MODEL_OP_MODEL_SUB_DELETE:
             ESP_LOGI(TAG, "ESP_BLE_MESH_MODEL_OP_MODEL_SUB_DELETE delete group id: %04x", param->value.state_change.mod_sub_delete.sub_addr);
+            uint16_t sub_addr = param->value.state_change.mod_sub_delete.sub_addr;
             ble_mesh_del_group(param->value.state_change.mod_sub_delete.sub_addr);
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_SUB_DELETE_GROUP, &sub_addr, sizeof(sub_addr), pdMS_TO_TICKS(10));
         default:
             break;
         }
@@ -618,12 +634,16 @@ static void example_ble_mesh_lighting_server_cb(esp_ble_mesh_lighting_server_cb_
             {
                 ESP_LOGI(TAG, "lightness 0x%04x", param->value.state_change.lightness_set.lightness);
                 //Todo
+                uint16_t lightness = param->value.state_change.lightness_set.lightness;
+                esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_LIGHTING_MODEL, EVENT_CONTROLL_LIGHTNESS, &lightness, sizeof(lightness), pdMS_TO_TICKS(10));
             }  
             if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_LIGHT_CTL_TEMPERATURE_SET ||
                 param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_LIGHT_CTL_TEMPERATURE_SET_UNACK)
             {
                 ESP_LOGI(TAG, "cct 0x%04x", param->value.state_change.ctl_temp_set.temperature);
                 //Todo
+                uint16_t cct = param->value.state_change.ctl_temp_set.temperature;
+                esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_LIGHTING_MODEL, EVENT_CONTROLL_CTL_TEMPERATURE, &cct, sizeof(cct), pdMS_TO_TICKS(10));
             }            
             break;
         }
@@ -802,6 +822,32 @@ void rd_suspend_ble_mesh(void)
 /*=====================================================================================
                                 RANG DONG IMPLEMENT
 =====================================================================================*/
+static void dummy_ble_mesh_handler(void *arg,
+                             esp_event_base_t base,
+                             int32_t id,
+                             void *data)
+{
+    // do nothing
+}
+
+esp_err_t rd_ble_mesh_event_init(void){
+    esp_event_loop_args_t loop_args = {
+        .queue_size = 10,
+        .task_name = "rd_ble_mesh_event_loop",
+        .task_priority = uxTaskPriorityGet(NULL),
+        .task_stack_size = 2048*2,
+        .task_core_id = tskNO_AFFINITY
+    };
+    return esp_event_loop_create(&loop_args, &ble_mesh_event_loop);
+}
+
+esp_err_t rd_ble_mesh_register_event_handler(esp_event_base_t evt_base, esp_event_handler_t event_handler){
+    if(!event_handler){
+        event_handler = dummy_ble_mesh_handler;
+    }
+    return esp_event_handler_register_with(ble_mesh_event_loop, evt_base, ESP_EVENT_ANY_ID, event_handler, NULL);
+}
+
 
 void rd_ble_mesh_register_cb_handle_mess_opcode_E0(rd_handle_message_opcode_vender cb){
     if(cb) handle_mess_opcode_E0 = cb;
@@ -887,7 +933,7 @@ static void ble_mesh_del_group(uint16_t id_group){
 
 }
 
-void ble_mesh_save_gw_addr(uint16_t addr){
+void ble_mesh_set_gw_addr(uint16_t addr){
     GW_ADDR = addr;
     //save to flash
 }
@@ -896,6 +942,9 @@ uint16_t ble_mesh_get_gw_addr(void){
     return GW_ADDR;
 }
 
+bool ble_mesh_is_provisioned(void){
+    return esp_ble_mesh_node_is_provisioned();
+}
 
 
 
