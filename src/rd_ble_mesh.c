@@ -38,8 +38,6 @@ ESP_EVENT_DEFINE_BASE(EVENT_MESH_LIGHTING_MODEL);
 
 static rd_handle_message_opcode_vender handle_mess_opcode_E0 = NULL;
 static rd_handle_message_opcode_vender handle_mess_opcode_E2 = NULL;
-static void ble_mesh_add_group(uint16_t id_group);
-static void ble_mesh_del_group(uint16_t id_group);
 
 static uint16_t GW_ADDR = 0x0001;
 static esp_event_loop_handle_t ble_mesh_event_loop;
@@ -386,7 +384,7 @@ void ble_mesh_kick_out(void)
     vTaskDelay(500 / portTICK_PERIOD_MS);
     esp_ble_mesh_node_local_reset(); // reset 
     vTaskDelay(500 / portTICK_PERIOD_MS);
-    esp_restart();
+    // esp_restart();
 }
 
 /**
@@ -871,7 +869,7 @@ uint32_t ble_mesh_get_opcode(ble_mesh_cb_param_t param){
 esp_err_t ble_mesh_rsp_opcode_vender_E0(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len){
     esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
     esp_err_t err = esp_ble_mesh_server_model_send_msg(vnd_models,
-                                                        cb_par->model_operation.ctx, RD_OPCODE_E0,
+                                                        cb_par->model_operation.ctx, RD_OPCODE_RSP_E0,
                                                         len, par);
     if (err)
     { 
@@ -883,7 +881,7 @@ esp_err_t ble_mesh_rsp_opcode_vender_E0(ble_mesh_cb_param_t param, uint8_t *par,
 esp_err_t ble_mesh_rsp_opcode_vender_E2(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len){
     esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
     esp_err_t err = esp_ble_mesh_server_model_send_msg(vnd_models,
-                                                        cb_par->model_operation.ctx, RD_OPCODE_E2,
+                                                        cb_par->model_operation.ctx, RD_OPCODE_RSP_E2,
                                                         len, par);
     if (err)
     { 
@@ -913,7 +911,15 @@ esp_err_t ble_mesh_rsp_state(uint8_t eleIdx, uint8_t onoff){
     return err;
 }
 
-static void ble_mesh_add_group(uint16_t id_group){
+uint8_t ble_mesh_get_element_index(ble_mesh_cb_param_t param){
+    esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
+    uint16_t primary_addr = esp_ble_mesh_get_primary_element_address();
+    uint16_t addr_dst = cb_par->model_operation.ctx->recv_dst;
+    uint8_t ele_idx = addr_dst - primary_addr;
+    return ele_idx;
+}
+
+void ble_mesh_add_group(uint16_t id_group){
     uint16_t primary_addr = esp_ble_mesh_get_primary_element_address();
     uint16_t model_id = ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV;
     uint16_t company_id = 0xffff; // SIG_MODEL: company_id = 0xffff
@@ -922,8 +928,7 @@ static void ble_mesh_add_group(uint16_t id_group){
     esp_ble_mesh_model_subscribe_group_addr(primary_addr, company_id, model_id, id_group);
 }
 
-
-static void ble_mesh_del_group(uint16_t id_group){
+void ble_mesh_del_group(uint16_t id_group){
     uint16_t primary_addr = esp_ble_mesh_get_primary_element_address();
     uint16_t model_id = ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV;
     uint16_t company_id = 0xffff; // SIG_MODEL: company_id = 0xffff
@@ -931,6 +936,29 @@ static void ble_mesh_del_group(uint16_t id_group){
     printf("delete group: 0x%04x\n", id_group);
     esp_ble_mesh_model_unsubscribe_group_addr(primary_addr, company_id, model_id, id_group);
 
+}
+
+void ble_mesh_get_mac(uint8_t mac[6])
+{
+    if (mac == NULL) {
+        ESP_LOGE(TAG, "%s, Invalid mac address", __func__);
+        return;
+    }
+    memcpy(mac, esp_bt_dev_get_address(), 6);
+}
+
+uint16_t ble_mesh_get_primary_addr(void){
+    return esp_ble_mesh_get_primary_element_address();
+}
+
+uint16_t ble_mesh_get_src_addr(ble_mesh_cb_param_t param){
+    esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
+    return cb_par->model_operation.ctx->addr;
+}
+
+uint16_t ble_mesh_get_dst_addr(ble_mesh_cb_param_t param){
+    esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
+    return cb_par->model_operation.ctx->recv_dst;
 }
 
 void ble_mesh_set_gw_addr(uint16_t addr){

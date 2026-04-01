@@ -48,6 +48,13 @@ esp_err_t rd_ble_mesh_register_event_handler(esp_event_base_t evt_base, esp_even
 void      rd_ble_mesh_register_cb_handle_mess_opcode_E0(rd_handle_message_opcode_vender cb);
 void      rd_ble_mesh_register_cb_handle_mess_opcode_E2(rd_handle_message_opcode_vender cb);
 
+void      ble_mesh_add_group(uint16_t id_group);
+void      ble_mesh_del_group(uint16_t id_group);
+uint8_t   ble_mesh_get_element_index(ble_mesh_cb_param_t param);
+void      ble_mesh_get_mac(uint8_t mac[6]);
+uint16_t  ble_mesh_get_primary_addr(void);
+uint16_t  ble_mesh_get_src_addr(ble_mesh_cb_param_t param);
+uint16_t  ble_mesh_get_dst_addr(ble_mesh_cb_param_t param);
 void      ble_mesh_get_mess_buf(ble_mesh_cb_param_t param, uint8_t **buff, uint16_t *len);
 uint32_t  ble_mesh_get_opcode(ble_mesh_cb_param_t param);
 esp_err_t ble_mesh_rsp_opcode_vender_E0(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len);
