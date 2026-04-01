@@ -515,9 +515,9 @@ static void example_ble_mesh_config_server_cb(esp_ble_mesh_cfg_server_cb_event_t
             break;
         case ESP_BLE_MESH_MODEL_OP_MODEL_SUB_DELETE:
             ESP_LOGI(TAG, "ESP_BLE_MESH_MODEL_OP_MODEL_SUB_DELETE delete group id: %04x", param->value.state_change.mod_sub_delete.sub_addr);
-            uint16_t sub_addr = param->value.state_change.mod_sub_delete.sub_addr;
+            uint16_t gr_addr = param->value.state_change.mod_sub_delete.sub_addr;
             ble_mesh_del_group(param->value.state_change.mod_sub_delete.sub_addr);
-            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_SUB_DELETE_GROUP, &sub_addr, sizeof(sub_addr), pdMS_TO_TICKS(10));
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_SUB_DELETE_GROUP, &gr_addr, sizeof(gr_addr), pdMS_TO_TICKS(10));
         default:
             break;
         }
