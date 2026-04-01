@@ -15,8 +15,11 @@
 #include "esp_ble_mesh_provisioning_api.h"
 #include "esp_ble_mesh_config_model_api.h"
 #include "esp_ble_mesh_generic_model_api.h"
-#include "esp_ble_mesh_lighting_model_api.h"
 #include "esp_ble_mesh_local_data_operation_api.h"
+#include "esp_ble_mesh_lighting_model_api.h"
+#include "esp_ble_mesh_time_scene_model_api.h"
+#include "mesh/access.h"
+
 #include "rd_ble_mesh.h"
 
 
@@ -31,10 +34,14 @@
 #define ESP_BLE_MESH_VND_MODEL_ID_CLIENT    0x0000
 #define ESP_BLE_MESH_VND_MODEL_ID_SERVER    0x0001
 
+#define MAX_SCENE_STORE     16
+#define SCENE_VALUE_MAX_LEN 8 // max 1 bytes
+
 ESP_EVENT_DEFINE_BASE(EVENT_MESH_CONFIG_SERVER);
 ESP_EVENT_DEFINE_BASE(EVENT_MESH_PROVISIONING);
 ESP_EVENT_DEFINE_BASE(EVENT_MESH_GENERIC_MODEL);
 ESP_EVENT_DEFINE_BASE(EVENT_MESH_LIGHTING_MODEL);
+ESP_EVENT_DEFINE_BASE(EVENT_MESH_SCENE_MODEL);
 
 static rd_handle_message_opcode_vender handle_mess_opcode_E0 = NULL;
 static rd_handle_message_opcode_vender handle_mess_opcode_E2 = NULL;
@@ -64,12 +71,49 @@ static esp_ble_mesh_cfg_srv_t config_server = {
     .default_ttl = 7,
 };
 
+static struct net_buf_simple scene_buffers_0[MAX_SCENE_STORE];
+static uint8_t scene_data_0[MAX_SCENE_STORE][SCENE_VALUE_MAX_LEN];
+static esp_ble_mesh_scene_register_t my_scenes_0[MAX_SCENE_STORE];
+
 /*--------------------------scene-----------------------------*/
 /**
  * @brief scene model
  * 
  */
 ESP_BLE_MESH_MODEL_PUB_DEFINE(scene_pub_0, 5 + 3, ROLE_NODE);
+
+static esp_ble_mesh_scenes_state_t scene_state_0 = {
+    .scene_count = MAX_SCENE_STORE,
+    .scenes = my_scenes_0,
+};
+
+// Scene Server
+esp_ble_mesh_scene_setup_srv_t scene_setup_srv = {
+    .rsp_ctrl = {
+        .get_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+        .set_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+    },
+    .state = &scene_state_0,
+};
+
+esp_ble_mesh_scene_srv_t scene_srv_0 = {
+    .rsp_ctrl = {
+        .get_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+        .set_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+    },
+    .state = &scene_state_0,
+};
+
+static void init_scene_values(void)
+{
+    for (int i = 0; i < MAX_SCENE_STORE; i++)
+    {
+        net_buf_simple_init_with_data(&scene_buffers_0[i], scene_data_0[i], SCENE_VALUE_MAX_LEN);
+        my_scenes_0[i].scene_number = i + 0x0001;
+        my_scenes_0[i].scene_type = 0;
+        my_scenes_0[i].scene_value = &scene_buffers_0[i];
+    }
+}
 
 /**
  * @brief generic model onoff 
@@ -652,6 +696,39 @@ static void example_ble_mesh_lighting_server_cb(esp_ble_mesh_lighting_server_cb_
 }
 #endif
 
+/* SCENE MODEL*/
+void ble_mesh_time_scene_server_callback(esp_ble_mesh_time_scene_server_cb_event_t event,
+                                         esp_ble_mesh_time_scene_server_cb_param_t *param)
+{
+    switch (event)
+    {
+    case ESP_BLE_MESH_TIME_SCENE_SERVER_STATE_CHANGE_EVT:
+        uint16_t scene_number = param->value.state_change.scene_store.scene_number;
+        if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_STORE)
+        {
+            printf("store Scene 0x%04X\n", scene_number);
+            //TODO
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_STORE_SCENE, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));
+        }
+        else if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_DELETE)
+        {
+            printf("delete Scene 0x%04X\n", scene_number);
+            //TODO
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_DELETE_SCENE, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));
+        }
+        else if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_RECALL)
+        {
+            printf("call Scene 0x%04X\n", scene_number);
+            //TODO
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_RECALL_SCENE, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));
+        }
+        break;
+    default:
+        printf("unknown scene event: %d\n", event);
+        break;
+    }
+}
+
 /**
  * @brief hàm khởi tạo BLE mesh
  * 
@@ -667,7 +744,7 @@ static esp_err_t ble_mesh_init(void)
     esp_ble_mesh_register_custom_model_callback(example_ble_mesh_custom_model_cb);     // vender
     esp_ble_mesh_register_generic_server_callback(example_ble_mesh_generic_server_cb);  // sigmesh: generic model
     // esp_ble_mesh_register_lighting_server_callback(example_ble_mesh_lighting_server_cb);// sigmesh: lighting model
-    // esp_ble_mesh_register_time_scene_server_callback(ble_mesh_time_scene_server_callback); // scene model
+    esp_ble_mesh_register_time_scene_server_callback(ble_mesh_time_scene_server_callback); // scene model
 
     err = esp_ble_mesh_init(&provision, &composition);
     if (err != ESP_OK) {
@@ -754,7 +831,7 @@ void rd_ble_mesh_init(void)
 #endif
 
     ble_mesh_get_dev_uuid(dev_uuid);
-    // init_scene_values(); //NOTE init scene value
+    init_scene_values(); //NOTE init scene value
     /* Initialize the Bluetooth Mesh Subsystem */
     err = ble_mesh_init();
     if (err) {
