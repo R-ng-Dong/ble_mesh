@@ -23,9 +23,8 @@
 #include "rd_ble_mesh.h"
 
 
-#define TAG "EX_BLE_MESH"
+#define TAG "CORE_BLE_MESH"
 
-#define CID_ESP 0x0211
 #define RD_OPCODE_E0            ESP_BLE_MESH_MODEL_OP_3(0xE0, CID_ESP)
 #define RD_OPCODE_RSP_E0        ESP_BLE_MESH_MODEL_OP_3(0xE1, CID_ESP)
 #define RD_OPCODE_E2            ESP_BLE_MESH_MODEL_OP_3(0xE2, CID_ESP)
@@ -234,8 +233,8 @@ static esp_ble_mesh_model_t root_models[] = {
     ESP_BLE_MESH_MODEL_LIGHT_LIGHTNESS_SRV(&lightness_pub_0, &lightness_server_0),
     ESP_BLE_MESH_MODEL_LIGHT_CTL_TEMP_SRV(&lightcct_pub_0, &lightcct_server_0),
 #endif
-    // ESP_BLE_MESH_MODEL_SCENE_SRV(&scene_pub_0, &scene_srv_0),       
-    // ESP_BLE_MESH_MODEL_SCENE_SETUP_SRV(NULL, &scene_setup_srv),      
+    ESP_BLE_MESH_MODEL_SCENE_SRV(&scene_pub_0, &scene_srv_0),       
+    ESP_BLE_MESH_MODEL_SCENE_SETUP_SRV(NULL, &scene_setup_srv),      
 };
 
 #if CONFIG_MAX_NUM_ELEMENT >=2
@@ -408,13 +407,15 @@ static void example_change_led_state(esp_ble_mesh_model_t *model,
     } else if (ESP_BLE_MESH_ADDR_IS_GROUP(ctx->recv_dst)) {
         if (esp_ble_mesh_is_model_subscribed_to_group(model, ctx->recv_dst)) {
             // control group
+            uint8_t ele_idx = model->element->element_addr - primary_addr;
             printf("control group addr: 0x%04X, stt: %d\n", ctx->recv_dst, onoff);
-            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_BY_GROUP_ADDR, NULL, 0, pdMS_TO_TICKS(10));
+            uint16_t data_send = (ele_idx<<8) | onoff;
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_BY_GROUP_ADDR, &data_send, sizeof(data_send), pdMS_TO_TICKS(10));
         }
     } else if (ctx->recv_dst == 0xFFFF) {
         // control all element
         printf("control all ele, stt: %d\n", onoff);
-        esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_ALL, NULL, 0, pdMS_TO_TICKS(10));
+        esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_ALL, &onoff, 1, pdMS_TO_TICKS(10));
     }
 }
 
@@ -422,13 +423,14 @@ static void example_change_led_state(esp_ble_mesh_model_t *model,
  * @brief hàm reset cứng thiết bị, hàm này sẽ xóa toàn bộ thông tin mạng mesh và khởi động lại chip
  * 
  */
-void ble_mesh_kick_out(void)
+esp_err_t ble_mesh_kick_out(void)
 {
-    printf("BLE_MESH: kick out\n");
+    ESP_LOGW(TAG, "==============>>> RESET MESH NETWORK <<<==============");
     vTaskDelay(500 / portTICK_PERIOD_MS);
-    esp_ble_mesh_node_local_reset(); // reset 
+    esp_err_t err = esp_ble_mesh_node_local_reset(); // reset 
     vTaskDelay(500 / portTICK_PERIOD_MS);
     // esp_restart();
+    return err;
 }
 
 /**
@@ -706,25 +708,25 @@ void ble_mesh_time_scene_server_callback(esp_ble_mesh_time_scene_server_cb_event
         uint16_t scene_number = param->value.state_change.scene_store.scene_number;
         if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_STORE)
         {
-            printf("store Scene 0x%04X\n", scene_number);
+            ESP_LOGI(TAG, "store Scene 0x%04X", scene_number);
             //TODO
             esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_STORE_SCENE, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));
         }
         else if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_DELETE)
         {
-            printf("delete Scene 0x%04X\n", scene_number);
+            ESP_LOGI(TAG, "delete Scene 0x%04X", scene_number);
             //TODO
             esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_DELETE_SCENE, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));
         }
         else if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_RECALL)
         {
-            printf("call Scene 0x%04X\n", scene_number);
+            ESP_LOGI(TAG, "recall Scene 0x%04X", scene_number);
             //TODO
             esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_RECALL_SCENE, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));
         }
         break;
     default:
-        printf("unknown scene event: %d\n", event);
+        ESP_LOGW(TAG, "unknown scene event: %d", event);
         break;
     }
 }
@@ -943,49 +945,50 @@ uint32_t ble_mesh_get_opcode(ble_mesh_cb_param_t param){
     return cb_par->model_operation.opcode;
 }
 
-esp_err_t ble_mesh_rsp_opcode_vender_E0(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len){
-    esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
-    esp_err_t err = esp_ble_mesh_server_model_send_msg(vnd_models,
-                                                        cb_par->model_operation.ctx, RD_OPCODE_RSP_E0,
-                                                        len, par);
-    if (err)
-    { 
-        ESP_LOGE("MESS_RSP_E0", "Failed to send message 0x%06x", RD_OPCODE_RSP_E0);
-    }
-    return err;
-}
-
-esp_err_t ble_mesh_rsp_opcode_vender_E2(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len){
-    esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
-    esp_err_t err = esp_ble_mesh_server_model_send_msg(vnd_models,
-                                                        cb_par->model_operation.ctx, RD_OPCODE_RSP_E2,
-                                                        len, par);
-    if (err)
-    { 
-        ESP_LOGE("MESS_RSP_E2", "Failed to send message 0x%06x", RD_OPCODE_RSP_E2);
-    }
-    return err;
-}
-
-esp_err_t ble_mesh_rsp_state(uint8_t eleIdx, uint8_t onoff){
-    esp_err_t err = ESP_OK;
+esp_err_t rd_ble_mesh_send_message(uint32_t opcode, uint8_t ele_idx, uint16_t dst_addr, uint8_t *par, uint8_t len){
     esp_ble_mesh_msg_ctx_t ctx;
     ctx.net_idx = 0x0000;
     ctx.app_idx = 0x0000;
-    ctx.addr = GW_ADDR; //df 0x0001
+    ctx.addr = dst_addr; 
     ctx.send_ttl = ESP_BLE_MESH_TTL_DEFAULT;
-    ctx.send_rel = false;  // no ack
-    if (esp_ble_mesh_node_is_provisioned()){
-        err = esp_ble_mesh_server_model_send_msg(sig_model_onoff[eleIdx], &ctx, ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_STATUS,
-                                                        1, &onoff);
+    ctx.send_rel = 0;  
+    uint8_t op_len = 0;
+    if (opcode < 0x100) {
+        op_len = 1;
+    } else if (opcode < 0x10000) {
+        op_len = 2;
+    } else {
+        op_len = 3;
+    }
+    esp_err_t err = ESP_OK;
+    if(op_len == 1){
+        return ESP_FAIL;
+    }else if(op_len == 2){
+        err = esp_ble_mesh_server_model_send_msg(sig_model_onoff[ele_idx], &ctx, opcode, len, par);
         if (err)
-        {
-            ESP_LOGE("MESS_ONOFF", "Failed to send message 0x%04x", ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_STATUS);
+        { 
+            ESP_LOGE("MESS_RSP_E0", "Failed to send message 0x%04x", (unsigned int)opcode);
         }
-    }else{
-        ESP_LOGW("MESS_ONOFF", "device unprovision");
+    }else if(op_len == 3){
+        err = esp_ble_mesh_server_model_send_msg(vnd_models, &ctx, opcode, len, par);
+        if (err)
+        { 
+            ESP_LOGE("MESS_RSP_E0", "Failed to send message 0x%06x", (unsigned int)opcode);
+        }
     }
     return err;
+}
+
+esp_err_t ble_mesh_rsp_opcode_vender_E0(uint8_t *par, uint8_t len){
+    return rd_ble_mesh_send_message(RD_OPCODE_RSP_E0, 0, GW_ADDR, par, len);
+}
+
+esp_err_t ble_mesh_rsp_opcode_vender_E2(uint8_t *par, uint8_t len){
+    return rd_ble_mesh_send_message(RD_OPCODE_RSP_E2, 0, GW_ADDR, par, len);
+}
+
+esp_err_t ble_mesh_rsp_state(uint8_t eleIdx, uint8_t onoff){
+    return rd_ble_mesh_send_message(ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_STATUS, eleIdx, GW_ADDR, &onoff, 1);
 }
 
 uint8_t ble_mesh_get_element_index(ble_mesh_cb_param_t param){
