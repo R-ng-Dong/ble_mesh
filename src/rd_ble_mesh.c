@@ -15,14 +15,17 @@
 #include "esp_ble_mesh_provisioning_api.h"
 #include "esp_ble_mesh_config_model_api.h"
 #include "esp_ble_mesh_generic_model_api.h"
-#include "esp_ble_mesh_lighting_model_api.h"
 #include "esp_ble_mesh_local_data_operation_api.h"
+#include "esp_ble_mesh_lighting_model_api.h"
+#include "esp_ble_mesh_time_scene_model_api.h"
+#include "mesh/access.h"
+#include "esp_ble_mesh_ble_api.h" // BLE ADV
+
 #include "rd_ble_mesh.h"
 
 
-#define TAG "EX_BLE_MESH"
+#define TAG "CORE_BLE_MESH"
 
-#define CID_ESP 0x0211
 #define RD_OPCODE_E0            ESP_BLE_MESH_MODEL_OP_3(0xE0, CID_ESP)
 #define RD_OPCODE_RSP_E0        ESP_BLE_MESH_MODEL_OP_3(0xE1, CID_ESP)
 #define RD_OPCODE_E2            ESP_BLE_MESH_MODEL_OP_3(0xE2, CID_ESP)
@@ -31,15 +34,18 @@
 #define ESP_BLE_MESH_VND_MODEL_ID_CLIENT    0x0000
 #define ESP_BLE_MESH_VND_MODEL_ID_SERVER    0x0001
 
+#define MAX_SCENE_STORE     16
+#define SCENE_VALUE_MAX_LEN 8 // max 1 bytes
+
 ESP_EVENT_DEFINE_BASE(EVENT_MESH_CONFIG_SERVER);
 ESP_EVENT_DEFINE_BASE(EVENT_MESH_PROVISIONING);
 ESP_EVENT_DEFINE_BASE(EVENT_MESH_GENERIC_MODEL);
 ESP_EVENT_DEFINE_BASE(EVENT_MESH_LIGHTING_MODEL);
+ESP_EVENT_DEFINE_BASE(EVENT_MESH_SCENE_MODEL);
 
 static rd_handle_message_opcode_vender handle_mess_opcode_E0 = NULL;
 static rd_handle_message_opcode_vender handle_mess_opcode_E2 = NULL;
-static void ble_mesh_add_group(uint16_t id_group);
-static void ble_mesh_del_group(uint16_t id_group);
+static rd_ble_mesh_send_ble_adv ble_mesh_send_ble_adv = NULL;
 
 static uint16_t GW_ADDR = 0x0001;
 static esp_event_loop_handle_t ble_mesh_event_loop;
@@ -66,12 +72,49 @@ static esp_ble_mesh_cfg_srv_t config_server = {
     .default_ttl = 7,
 };
 
+static struct net_buf_simple scene_buffers_0[MAX_SCENE_STORE];
+static uint8_t scene_data_0[MAX_SCENE_STORE][SCENE_VALUE_MAX_LEN];
+static esp_ble_mesh_scene_register_t my_scenes_0[MAX_SCENE_STORE];
+
 /*--------------------------scene-----------------------------*/
 /**
  * @brief scene model
  * 
  */
 ESP_BLE_MESH_MODEL_PUB_DEFINE(scene_pub_0, 5 + 3, ROLE_NODE);
+
+static esp_ble_mesh_scenes_state_t scene_state_0 = {
+    .scene_count = MAX_SCENE_STORE,
+    .scenes = my_scenes_0,
+};
+
+// Scene Server
+esp_ble_mesh_scene_setup_srv_t scene_setup_srv = {
+    .rsp_ctrl = {
+        .get_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+        .set_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+    },
+    .state = &scene_state_0,
+};
+
+esp_ble_mesh_scene_srv_t scene_srv_0 = {
+    .rsp_ctrl = {
+        .get_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+        .set_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+    },
+    .state = &scene_state_0,
+};
+
+static void init_scene_values(void)
+{
+    for (int i = 0; i < MAX_SCENE_STORE; i++)
+    {
+        net_buf_simple_init_with_data(&scene_buffers_0[i], scene_data_0[i], SCENE_VALUE_MAX_LEN);
+        my_scenes_0[i].scene_number = i + 0x0001;
+        my_scenes_0[i].scene_type = 0;
+        my_scenes_0[i].scene_value = &scene_buffers_0[i];
+    }
+}
 
 /**
  * @brief generic model onoff 
@@ -192,8 +235,8 @@ static esp_ble_mesh_model_t root_models[] = {
     ESP_BLE_MESH_MODEL_LIGHT_LIGHTNESS_SRV(&lightness_pub_0, &lightness_server_0),
     ESP_BLE_MESH_MODEL_LIGHT_CTL_TEMP_SRV(&lightcct_pub_0, &lightcct_server_0),
 #endif
-    // ESP_BLE_MESH_MODEL_SCENE_SRV(&scene_pub_0, &scene_srv_0),       
-    // ESP_BLE_MESH_MODEL_SCENE_SETUP_SRV(NULL, &scene_setup_srv),      
+    ESP_BLE_MESH_MODEL_SCENE_SRV(&scene_pub_0, &scene_srv_0),       
+    ESP_BLE_MESH_MODEL_SCENE_SETUP_SRV(NULL, &scene_setup_srv),      
 };
 
 #if CONFIG_MAX_NUM_ELEMENT >=2
@@ -366,13 +409,15 @@ static void example_change_led_state(esp_ble_mesh_model_t *model,
     } else if (ESP_BLE_MESH_ADDR_IS_GROUP(ctx->recv_dst)) {
         if (esp_ble_mesh_is_model_subscribed_to_group(model, ctx->recv_dst)) {
             // control group
+            uint8_t ele_idx = model->element->element_addr - primary_addr;
             printf("control group addr: 0x%04X, stt: %d\n", ctx->recv_dst, onoff);
-            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_BY_GROUP_ADDR, NULL, 0, pdMS_TO_TICKS(10));
+            uint16_t data_send = (ele_idx<<8) | onoff;
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_BY_GROUP_ADDR, &data_send, sizeof(data_send), pdMS_TO_TICKS(10));
         }
     } else if (ctx->recv_dst == 0xFFFF) {
         // control all element
         printf("control all ele, stt: %d\n", onoff);
-        esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_ALL, NULL, 0, pdMS_TO_TICKS(10));
+        esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_ALL, &onoff, 1, pdMS_TO_TICKS(10));
     }
 }
 
@@ -380,13 +425,18 @@ static void example_change_led_state(esp_ble_mesh_model_t *model,
  * @brief hàm reset cứng thiết bị, hàm này sẽ xóa toàn bộ thông tin mạng mesh và khởi động lại chip
  * 
  */
-void ble_mesh_kick_out(void)
+esp_err_t ble_mesh_kick_out(void)
 {
+<<<<<<< HEAD
     ESP_LOGW("BLE_MESH", "     =====>>> KICK OUT <<<=====     ");
+=======
+    ESP_LOGW(TAG, "==============>>> RESET MESH NETWORK <<<==============");
+>>>>>>> vmt
     vTaskDelay(500 / portTICK_PERIOD_MS);
-    esp_ble_mesh_node_local_reset(); // reset 
+    esp_err_t err = esp_ble_mesh_node_local_reset(); // reset 
     vTaskDelay(500 / portTICK_PERIOD_MS);
-    esp_restart();
+    // esp_restart();
+    return err;
 }
 
 /**
@@ -654,6 +704,60 @@ static void example_ble_mesh_lighting_server_cb(esp_ble_mesh_lighting_server_cb_
 }
 #endif
 
+/* SCENE MODEL*/
+void ble_mesh_time_scene_server_callback(esp_ble_mesh_time_scene_server_cb_event_t event,
+                                         esp_ble_mesh_time_scene_server_cb_param_t *param)
+{
+    switch (event)
+    {
+    case ESP_BLE_MESH_TIME_SCENE_SERVER_STATE_CHANGE_EVT:
+        uint16_t scene_number = param->value.state_change.scene_store.scene_number;
+        if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_STORE)
+        {
+            ESP_LOGI(TAG, "store Scene 0x%04X", scene_number);
+            //TODO
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_STORE_SCENE, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));
+        }
+        else if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_DELETE)
+        {
+            ESP_LOGI(TAG, "delete Scene 0x%04X", scene_number);
+            //TODO
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_DELETE_SCENE, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));
+        }
+        else if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_RECALL)
+        {
+            ESP_LOGI(TAG, "recall Scene 0x%04X", scene_number);
+            //TODO
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_RECALL_SCENE, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));
+        }
+        break;
+    default:
+        ESP_LOGW(TAG, "unknown scene event: %d", event);
+        break;
+    }
+}
+
+/*================= BLE ADV ==================*/
+static void custom_ble_scan_cb(esp_ble_mesh_ble_cb_event_t event,
+                               esp_ble_mesh_ble_cb_param_t *param) {
+  if (event == ESP_BLE_MESH_SCAN_BLE_ADVERTISING_PKT_EVT) {
+    int8_t rssi = param->scan_ble_adv_pkt.rssi;
+    uint8_t *adv_data = param->scan_ble_adv_pkt.data;
+    uint16_t adv_len = param->scan_ble_adv_pkt.length;
+    uint8_t *mac = param->scan_ble_adv_pkt.addr;
+
+    if(adv_len == 15 && adv_data[1] == 0xff){
+#if LOG_RAW_DATA_BLE_ADV
+        ESP_LOGI(TAG, "MAC %02x:%02x:%02x:%02x:%02x:%02x",
+                    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);   
+        ESP_LOG_BUFFER_HEX(TAG, adv_data, adv_len);
+#endif
+        if(ble_mesh_send_ble_adv)
+            ble_mesh_send_ble_adv(rssi, mac, adv_data, adv_len);
+    }
+  }
+}
+
 /**
  * @brief hàm khởi tạo BLE mesh
  * 
@@ -669,7 +773,8 @@ static esp_err_t ble_mesh_init(void)
     esp_ble_mesh_register_custom_model_callback(example_ble_mesh_custom_model_cb);     // vender
     esp_ble_mesh_register_generic_server_callback(example_ble_mesh_generic_server_cb);  // sigmesh: generic model
     // esp_ble_mesh_register_lighting_server_callback(example_ble_mesh_lighting_server_cb);// sigmesh: lighting model
-    // esp_ble_mesh_register_time_scene_server_callback(ble_mesh_time_scene_server_callback); // scene model
+    esp_ble_mesh_register_time_scene_server_callback(ble_mesh_time_scene_server_callback); // scene model
+    esp_ble_mesh_register_ble_callback(custom_ble_scan_cb);
 
     err = esp_ble_mesh_init(&provision, &composition);
     if (err != ESP_OK) {
@@ -756,7 +861,7 @@ void rd_ble_mesh_init(void)
 #endif
 
     ble_mesh_get_dev_uuid(dev_uuid);
-    // init_scene_values(); //NOTE init scene value
+    init_scene_values(); //NOTE init scene value
     /* Initialize the Bluetooth Mesh Subsystem */
     err = ble_mesh_init();
     if (err) {
@@ -769,6 +874,11 @@ void rd_ble_mesh_init(void)
     else
     {
         printf("un provision\n");
+    }
+    esp_ble_mesh_ble_scan_param_t scan_param = {0 };
+    err = esp_ble_mesh_start_ble_scanning(&scan_param);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Start scanning failed: %d", err);
     }
     is_ble_mesh_init= true;
 }
@@ -800,6 +910,11 @@ void rd_continue_ble_mesh(void)
                 ESP_LOGE(TAG, "Failed to enable mesh node");
             }
         }
+        esp_ble_mesh_ble_scan_param_t scan_param = {0};
+        err = esp_ble_mesh_start_ble_scanning(&scan_param);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Start scanning failed: %d", err);
+        }
     }
 }
 
@@ -808,6 +923,10 @@ void rd_suspend_ble_mesh(void)
     if (is_ble_mesh_init)
     {
         is_ble_mesh_init = false;
+        esp_err_t err = esp_ble_mesh_stop_ble_scanning();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Stop scanning failed: %d", err);
+        }
         esp_ble_mesh_node_prov_disable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
         esp_ble_mesh_deinit_param_t param = {
             .erase_flash = false // hoặc true nếu muốn reset
@@ -857,6 +976,10 @@ void rd_ble_mesh_register_cb_handle_mess_opcode_E2(rd_handle_message_opcode_vend
     if(cb) handle_mess_opcode_E2 = cb;
 }
 
+void rd_ble_mesh_register_cb_send_ble_adv(rd_ble_mesh_send_ble_adv cb){
+    if(cb) ble_mesh_send_ble_adv = cb;
+}
+
 void ble_mesh_get_mess_buf(ble_mesh_cb_param_t param, uint8_t **buff, uint16_t *len){
     esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
     *buff = cb_par->model_operation.msg;
@@ -868,52 +991,84 @@ uint32_t ble_mesh_get_opcode(ble_mesh_cb_param_t param){
     return cb_par->model_operation.opcode;
 }
 
+esp_err_t rd_ble_mesh_send_message(uint32_t opcode, uint8_t ele_idx, uint16_t dst_addr, uint8_t *par, uint8_t len){
+    esp_ble_mesh_msg_ctx_t ctx;
+    ctx.net_idx = 0x0000;
+    ctx.app_idx = 0x0000;
+    ctx.addr = dst_addr; 
+    ctx.send_ttl = ESP_BLE_MESH_TTL_DEFAULT;
+    ctx.send_rel = 0;  
+    uint8_t op_len = 0;
+    if (opcode < 0x100) {
+        op_len = 1;
+    } else if (opcode < 0x10000) {
+        op_len = 2;
+    } else {
+        op_len = 3;
+    }
+    esp_err_t err = ESP_OK;
+    if(op_len == 1){
+        return ESP_FAIL;
+    }else if(op_len == 2){
+        err = esp_ble_mesh_server_model_send_msg(sig_model_onoff[ele_idx], &ctx, opcode, len, par);
+        if (err)
+        { 
+            ESP_LOGE("MESS_RSP_E0", "Failed to send message 0x%04x", (unsigned int)opcode);
+        }
+    }else if(op_len == 3){
+        err = esp_ble_mesh_server_model_send_msg(vnd_models, &ctx, opcode, len, par);
+        if (err)
+        { 
+            ESP_LOGE("MESS_RSP_E0", "Failed to send message 0x%06x", (unsigned int)opcode);
+        }
+    }
+    return err;
+}
+
+esp_err_t ble_mesh_send_opcode_vender_E0(uint8_t *par, uint8_t len){
+    return rd_ble_mesh_send_message(RD_OPCODE_RSP_E0, 0, GW_ADDR, par, len);
+}
+
+esp_err_t ble_mesh_send_opcode_vender_E2(uint8_t *par, uint8_t len){
+    return rd_ble_mesh_send_message(RD_OPCODE_RSP_E2, 0, GW_ADDR, par, len);
+}
+
+esp_err_t ble_mesh_rsp_state(uint8_t eleIdx, uint8_t onoff){
+    return rd_ble_mesh_send_message(ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_STATUS, eleIdx, GW_ADDR, &onoff, 1);
+}
+
 esp_err_t ble_mesh_rsp_opcode_vender_E0(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len){
     esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
     esp_err_t err = esp_ble_mesh_server_model_send_msg(vnd_models,
-                                                        cb_par->model_operation.ctx, RD_OPCODE_E0,
+                                                        cb_par->model_operation.ctx, RD_OPCODE_RSP_E0,
                                                         len, par);
     if (err)
     { 
         ESP_LOGE("MESS_RSP_E0", "Failed to send message 0x%06x", RD_OPCODE_RSP_E0);
     }
-    return err;
+    return err;   
 }
-
 esp_err_t ble_mesh_rsp_opcode_vender_E2(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len){
     esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
     esp_err_t err = esp_ble_mesh_server_model_send_msg(vnd_models,
-                                                        cb_par->model_operation.ctx, RD_OPCODE_E2,
+                                                        cb_par->model_operation.ctx, RD_OPCODE_RSP_E2,
                                                         len, par);
     if (err)
     { 
-        ESP_LOGE("MESS_RSP_E2", "Failed to send message 0x%06x", RD_OPCODE_RSP_E2);
+        ESP_LOGE("MESS_RSP_E0", "Failed to send message 0x%06x", RD_OPCODE_RSP_E2);
     }
-    return err;
+    return err; 
 }
 
-esp_err_t ble_mesh_rsp_state(uint8_t eleIdx, uint8_t onoff){
-    esp_err_t err = ESP_OK;
-    esp_ble_mesh_msg_ctx_t ctx;
-    ctx.net_idx = 0x0000;
-    ctx.app_idx = 0x0000;
-    ctx.addr = GW_ADDR; //df 0x0001
-    ctx.send_ttl = ESP_BLE_MESH_TTL_DEFAULT;
-    ctx.send_rel = false;  // no ack
-    if (esp_ble_mesh_node_is_provisioned()){
-        err = esp_ble_mesh_server_model_send_msg(sig_model_onoff[eleIdx], &ctx, ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_STATUS,
-                                                        1, &onoff);
-        if (err)
-        {
-            ESP_LOGE("MESS_ONOFF", "Failed to send message 0x%04x", ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_STATUS);
-        }
-    }else{
-        ESP_LOGW("MESS_ONOFF", "device unprovision");
-    }
-    return err;
+uint8_t ble_mesh_get_element_index(ble_mesh_cb_param_t param){
+    esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
+    uint16_t primary_addr = esp_ble_mesh_get_primary_element_address();
+    uint16_t addr_dst = cb_par->model_operation.ctx->recv_dst;
+    uint8_t ele_idx = addr_dst - primary_addr;
+    return ele_idx;
 }
 
-static void ble_mesh_add_group(uint16_t id_group){
+void ble_mesh_add_group(uint16_t id_group){
     uint16_t primary_addr = esp_ble_mesh_get_primary_element_address();
     uint16_t model_id = ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV;
     uint16_t company_id = 0xffff; // SIG_MODEL: company_id = 0xffff
@@ -922,8 +1077,7 @@ static void ble_mesh_add_group(uint16_t id_group){
     esp_ble_mesh_model_subscribe_group_addr(primary_addr, company_id, model_id, id_group);
 }
 
-
-static void ble_mesh_del_group(uint16_t id_group){
+void ble_mesh_del_group(uint16_t id_group){
     uint16_t primary_addr = esp_ble_mesh_get_primary_element_address();
     uint16_t model_id = ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV;
     uint16_t company_id = 0xffff; // SIG_MODEL: company_id = 0xffff
@@ -931,6 +1085,29 @@ static void ble_mesh_del_group(uint16_t id_group){
     printf("delete group: 0x%04x\n", id_group);
     esp_ble_mesh_model_unsubscribe_group_addr(primary_addr, company_id, model_id, id_group);
 
+}
+
+void ble_mesh_get_mac(uint8_t mac[6])
+{
+    if (mac == NULL) {
+        ESP_LOGE(TAG, "%s, Invalid mac address", __func__);
+        return;
+    }
+    memcpy(mac, esp_bt_dev_get_address(), 6);
+}
+
+uint16_t ble_mesh_get_primary_addr(void){
+    return esp_ble_mesh_get_primary_element_address();
+}
+
+uint16_t ble_mesh_get_src_addr(ble_mesh_cb_param_t param){
+    esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
+    return cb_par->model_operation.ctx->addr;
+}
+
+uint16_t ble_mesh_get_dst_addr(ble_mesh_cb_param_t param){
+    esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
+    return cb_par->model_operation.ctx->recv_dst;
 }
 
 void ble_mesh_set_gw_addr(uint16_t addr){
