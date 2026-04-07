@@ -19,6 +19,7 @@
 #include "esp_ble_mesh_lighting_model_api.h"
 #include "esp_ble_mesh_time_scene_model_api.h"
 #include "mesh/access.h"
+#include "esp_ble_mesh_ble_api.h" // BLE ADV
 
 #include "rd_ble_mesh.h"
 
@@ -731,6 +732,23 @@ void ble_mesh_time_scene_server_callback(esp_ble_mesh_time_scene_server_cb_event
     }
 }
 
+/*================= BLE ADV ==================*/
+static void custom_ble_scan_cb(esp_ble_mesh_ble_cb_event_t event,
+                               esp_ble_mesh_ble_cb_param_t *param) {
+  if (event == ESP_BLE_MESH_SCAN_BLE_ADVERTISING_PKT_EVT) {
+    uint8_t *adv_data = param->scan_ble_adv_pkt.data;
+    uint16_t adv_len = param->scan_ble_adv_pkt.length;
+    uint8_t *mac = param->scan_ble_adv_pkt.addr;
+
+    if(adv_len == 15 && adv_data[1] == 0xff){
+        ESP_LOGI(TAG, "MAC %02x:%02x:%02x:%02x:%02x:%02x",
+                    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);   
+        ESP_LOG_BUFFER_HEX(TAG, adv_data, adv_len);
+    }
+
+  }
+}
+
 /**
  * @brief hàm khởi tạo BLE mesh
  * 
@@ -747,6 +765,7 @@ static esp_err_t ble_mesh_init(void)
     esp_ble_mesh_register_generic_server_callback(example_ble_mesh_generic_server_cb);  // sigmesh: generic model
     // esp_ble_mesh_register_lighting_server_callback(example_ble_mesh_lighting_server_cb);// sigmesh: lighting model
     esp_ble_mesh_register_time_scene_server_callback(ble_mesh_time_scene_server_callback); // scene model
+    esp_ble_mesh_register_ble_callback(custom_ble_scan_cb);
 
     err = esp_ble_mesh_init(&provision, &composition);
     if (err != ESP_OK) {
@@ -847,6 +866,11 @@ void rd_ble_mesh_init(void)
     {
         printf("un provision\n");
     }
+    esp_ble_mesh_ble_scan_param_t scan_param = {0 };
+    err = esp_ble_mesh_start_ble_scanning(&scan_param);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Start scanning failed: %d", err);
+    }
     is_ble_mesh_init= true;
 }
 
@@ -877,6 +901,11 @@ void rd_continue_ble_mesh(void)
                 ESP_LOGE(TAG, "Failed to enable mesh node");
             }
         }
+        esp_ble_mesh_ble_scan_param_t scan_param = {0};
+        err = esp_ble_mesh_start_ble_scanning(&scan_param);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Start scanning failed: %d", err);
+        }
     }
 }
 
@@ -885,6 +914,10 @@ void rd_suspend_ble_mesh(void)
     if (is_ble_mesh_init)
     {
         is_ble_mesh_init = false;
+        esp_err_t err = esp_ble_mesh_stop_ble_scanning();
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Stop scanning failed: %d", err);
+        }
         esp_ble_mesh_node_prov_disable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
         esp_ble_mesh_deinit_param_t param = {
             .erase_flash = false // hoặc true nếu muốn reset
