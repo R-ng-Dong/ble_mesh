@@ -18,9 +18,11 @@ ESP_EVENT_DECLARE_BASE(EVENT_MESH_SCENE_MODEL);
 
 #define CONFIG_MAX_NUM_ELEMENT  3
 #define CONFIG_USE_SDK_ROGO     1
+#define LOG_RAW_DATA_BLE_ADV    0
 
 typedef void *ble_mesh_cb_param_t; //ble_mesh_cb_param_t ~ (void *)
 typedef void (*rd_handle_message_opcode_vender)(ble_mesh_cb_param_t param);
+typedef void (*rd_ble_mesh_send_ble_adv)(int8_t rssi, uint8_t mac[6], uint8_t *buf, uint8_t len);
 
 typedef enum {
     EVENT_MESH_ADD_APP_KEY = 0,
@@ -62,6 +64,7 @@ esp_err_t rd_ble_mesh_event_init(void);
 esp_err_t rd_ble_mesh_register_event_handler(esp_event_base_t evt_base, esp_event_handler_t event_handler);
 void      rd_ble_mesh_register_cb_handle_mess_opcode_E0(rd_handle_message_opcode_vender cb);
 void      rd_ble_mesh_register_cb_handle_mess_opcode_E2(rd_handle_message_opcode_vender cb);
+void      rd_ble_mesh_register_cb_send_ble_adv(rd_ble_mesh_send_ble_adv cb);
 
 void      ble_mesh_add_group(uint16_t id_group);
 void      ble_mesh_del_group(uint16_t id_group);
@@ -76,8 +79,10 @@ void      ble_mesh_get_mess_buf(ble_mesh_cb_param_t param, uint8_t **buff, uint1
 uint32_t  ble_mesh_get_opcode(ble_mesh_cb_param_t param);
 
 esp_err_t rd_ble_mesh_send_message(uint32_t opcode, uint8_t ele_idx, uint16_t dst_addr, uint8_t *par, uint8_t len);
-esp_err_t ble_mesh_rsp_opcode_vender_E0(uint8_t *par, uint8_t len);
-esp_err_t ble_mesh_rsp_opcode_vender_E2(uint8_t *par, uint8_t len);
+esp_err_t ble_mesh_send_opcode_vender_E0(uint8_t *par, uint8_t len);
+esp_err_t ble_mesh_send_opcode_vender_E2(uint8_t *par, uint8_t len);
 esp_err_t ble_mesh_rsp_state(uint8_t eleIdx, uint8_t onoff);
+esp_err_t ble_mesh_rsp_opcode_vender_E0(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len);
+esp_err_t ble_mesh_rsp_opcode_vender_E2(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len);
 
 #endif /* _RD_BLE_MESH_H__ */

@@ -45,6 +45,7 @@ ESP_EVENT_DEFINE_BASE(EVENT_MESH_SCENE_MODEL);
 
 static rd_handle_message_opcode_vender handle_mess_opcode_E0 = NULL;
 static rd_handle_message_opcode_vender handle_mess_opcode_E2 = NULL;
+static rd_ble_mesh_send_ble_adv ble_mesh_send_ble_adv = NULL;
 
 static uint16_t GW_ADDR = 0x0001;
 static esp_event_loop_handle_t ble_mesh_event_loop;
@@ -736,16 +737,20 @@ void ble_mesh_time_scene_server_callback(esp_ble_mesh_time_scene_server_cb_event
 static void custom_ble_scan_cb(esp_ble_mesh_ble_cb_event_t event,
                                esp_ble_mesh_ble_cb_param_t *param) {
   if (event == ESP_BLE_MESH_SCAN_BLE_ADVERTISING_PKT_EVT) {
+    int8_t rssi = param->scan_ble_adv_pkt.rssi;
     uint8_t *adv_data = param->scan_ble_adv_pkt.data;
     uint16_t adv_len = param->scan_ble_adv_pkt.length;
     uint8_t *mac = param->scan_ble_adv_pkt.addr;
 
     if(adv_len == 15 && adv_data[1] == 0xff){
+#if LOG_RAW_DATA_BLE_ADV
         ESP_LOGI(TAG, "MAC %02x:%02x:%02x:%02x:%02x:%02x",
                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);   
         ESP_LOG_BUFFER_HEX(TAG, adv_data, adv_len);
+#endif
+        if(ble_mesh_send_ble_adv)
+            ble_mesh_send_ble_adv(rssi, mac, adv_data, adv_len);
     }
-
   }
 }
 
@@ -967,6 +972,10 @@ void rd_ble_mesh_register_cb_handle_mess_opcode_E2(rd_handle_message_opcode_vend
     if(cb) handle_mess_opcode_E2 = cb;
 }
 
+void rd_ble_mesh_register_cb_send_ble_adv(rd_ble_mesh_send_ble_adv cb){
+    if(cb) ble_mesh_send_ble_adv = cb;
+}
+
 void ble_mesh_get_mess_buf(ble_mesh_cb_param_t param, uint8_t **buff, uint16_t *len){
     esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
     *buff = cb_par->model_operation.msg;
@@ -1012,16 +1021,39 @@ esp_err_t rd_ble_mesh_send_message(uint32_t opcode, uint8_t ele_idx, uint16_t ds
     return err;
 }
 
-esp_err_t ble_mesh_rsp_opcode_vender_E0(uint8_t *par, uint8_t len){
+esp_err_t ble_mesh_send_opcode_vender_E0(uint8_t *par, uint8_t len){
     return rd_ble_mesh_send_message(RD_OPCODE_RSP_E0, 0, GW_ADDR, par, len);
 }
 
-esp_err_t ble_mesh_rsp_opcode_vender_E2(uint8_t *par, uint8_t len){
+esp_err_t ble_mesh_send_opcode_vender_E2(uint8_t *par, uint8_t len){
     return rd_ble_mesh_send_message(RD_OPCODE_RSP_E2, 0, GW_ADDR, par, len);
 }
 
 esp_err_t ble_mesh_rsp_state(uint8_t eleIdx, uint8_t onoff){
     return rd_ble_mesh_send_message(ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_STATUS, eleIdx, GW_ADDR, &onoff, 1);
+}
+
+esp_err_t ble_mesh_rsp_opcode_vender_E0(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len){
+    esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
+    esp_err_t err = esp_ble_mesh_server_model_send_msg(vnd_models,
+                                                        cb_par->model_operation.ctx, RD_OPCODE_RSP_E0,
+                                                        len, par);
+    if (err)
+    { 
+        ESP_LOGE("MESS_RSP_E0", "Failed to send message 0x%06x", RD_OPCODE_RSP_E0);
+    }
+    return err;   
+}
+esp_err_t ble_mesh_rsp_opcode_vender_E2(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len){
+    esp_ble_mesh_model_cb_param_t *cb_par = (esp_ble_mesh_model_cb_param_t *)param;
+    esp_err_t err = esp_ble_mesh_server_model_send_msg(vnd_models,
+                                                        cb_par->model_operation.ctx, RD_OPCODE_RSP_E2,
+                                                        len, par);
+    if (err)
+    { 
+        ESP_LOGE("MESS_RSP_E0", "Failed to send message 0x%06x", RD_OPCODE_RSP_E2);
+    }
+    return err; 
 }
 
 uint8_t ble_mesh_get_element_index(ble_mesh_cb_param_t param){
