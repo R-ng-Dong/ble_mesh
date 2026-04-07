@@ -427,11 +427,7 @@ static void example_change_led_state(esp_ble_mesh_model_t *model,
  */
 esp_err_t ble_mesh_kick_out(void)
 {
-<<<<<<< HEAD
-    ESP_LOGW("BLE_MESH", "     =====>>> KICK OUT <<<=====     ");
-=======
     ESP_LOGW(TAG, "==============>>> RESET MESH NETWORK <<<==============");
->>>>>>> vmt
     vTaskDelay(500 / portTICK_PERIOD_MS);
     esp_err_t err = esp_ble_mesh_node_local_reset(); // reset 
     vTaskDelay(500 / portTICK_PERIOD_MS);
