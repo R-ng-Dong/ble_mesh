@@ -20,6 +20,39 @@ ESP_EVENT_DECLARE_BASE(EVENT_MESH_SCENE_MODEL);
 #define CONFIG_USE_SDK_ROGO     1
 #define LOG_RAW_DATA_BLE_ADV    0
 
+/*!< Generic OnOff Message Opcode */
+#define BLE_MESH_MODEL_OP_GEN_ONOFF_GET                         RD_BLE_MESH_MODEL_OP_2(0x82, 0x01)
+#define BLE_MESH_MODEL_OP_GEN_ONOFF_SET                         RD_BLE_MESH_MODEL_OP_2(0x82, 0x02)
+#define BLE_MESH_MODEL_OP_GEN_ONOFF_SET_UNACK                   RD_BLE_MESH_MODEL_OP_2(0x82, 0x03)
+#define BLE_MESH_MODEL_OP_GEN_ONOFF_STATUS                      RD_BLE_MESH_MODEL_OP_2(0x82, 0x04)
+
+/*!< Scene Message Opcode */
+#define BLE_MESH_MODEL_OP_SCENE_GET                             RD_BLE_MESH_MODEL_OP_2(0x82, 0x41)
+#define BLE_MESH_MODEL_OP_SCENE_RECALL                          RD_BLE_MESH_MODEL_OP_2(0x82, 0x42)
+#define BLE_MESH_MODEL_OP_SCENE_RECALL_UNACK                    RD_BLE_MESH_MODEL_OP_2(0x82, 0x43)
+#define BLE_MESH_MODEL_OP_SCENE_STATUS                          RD_BLE_MESH_MODEL_OP_2(0x5E)
+#define BLE_MESH_MODEL_OP_SCENE_REGISTER_GET                    RD_BLE_MESH_MODEL_OP_2(0x82, 0x44)
+#define BLE_MESH_MODEL_OP_SCENE_REGISTER_STATUS                 RD_BLE_MESH_MODEL_OP_2(0x82, 0x45)
+
+/*!< Light Lightness Message Opcode */
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_GET                   RD_BLE_MESH_MODEL_OP_2(0x82, 0x4B)
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_SET                   RD_BLE_MESH_MODEL_OP_2(0x82, 0x4C)
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_SET_UNACK             RD_BLE_MESH_MODEL_OP_2(0x82, 0x4D)
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_STATUS                RD_BLE_MESH_MODEL_OP_2(0x82, 0x4E)
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_LINEAR_GET            RD_BLE_MESH_MODEL_OP_2(0x82, 0x4F)
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_LINEAR_SET            RD_BLE_MESH_MODEL_OP_2(0x82, 0x50)
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_LINEAR_SET_UNACK      RD_BLE_MESH_MODEL_OP_2(0x82, 0x51)
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_LINEAR_STATUS         RD_BLE_MESH_MODEL_OP_2(0x82, 0x52)
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_LAST_GET              RD_BLE_MESH_MODEL_OP_2(0x82, 0x53)
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_LAST_STATUS           RD_BLE_MESH_MODEL_OP_2(0x82, 0x54)
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_DEFAULT_GET           RD_BLE_MESH_MODEL_OP_2(0x82, 0x55)
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_DEFAULT_STATUS        RD_BLE_MESH_MODEL_OP_2(0x82, 0x56)
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_RANGE_GET             RD_BLE_MESH_MODEL_OP_2(0x82, 0x57)
+#define BLE_MESH_MODEL_OP_LIGHT_LIGHTNESS_RANGE_STATUS          RD_BLE_MESH_MODEL_OP_2(0x82, 0x58)
+
+/*!< Sensor Message Opcode */
+#define BLE_MESH_MODEL_OP_SENSOR_STATUS                         RD_BLE_MESH_MODEL_OP_1(0x52)
+
 typedef void *ble_mesh_cb_param_t; //ble_mesh_cb_param_t ~ (void *)
 typedef void (*rd_handle_message_opcode_vender)(ble_mesh_cb_param_t param);
 typedef void (*rd_ble_mesh_send_ble_adv)(int8_t rssi, uint8_t mac[6], uint8_t *buf, uint8_t len);
@@ -78,10 +111,11 @@ uint16_t  ble_mesh_get_dst_addr(ble_mesh_cb_param_t param);
 void      ble_mesh_get_mess_buf(ble_mesh_cb_param_t param, uint8_t **buff, uint16_t *len);
 uint32_t  ble_mesh_get_opcode(ble_mesh_cb_param_t param);
 
-esp_err_t rd_ble_mesh_send_message(uint32_t opcode, uint8_t ele_idx, uint16_t dst_addr, uint8_t *par, uint8_t len);
-esp_err_t ble_mesh_send_opcode_vender_E0(uint8_t *par, uint8_t len);
-esp_err_t ble_mesh_send_opcode_vender_E2(uint8_t *par, uint8_t len);
-esp_err_t ble_mesh_rsp_state(uint8_t eleIdx, uint8_t onoff);
+esp_err_t ble_mesh_client_model_scene_send_msg(uint32_t opcode, uint16_t dst_addr, uint8_t *par, uint16_t len);
+esp_err_t ble_mesh_model_sensor_send_msg(uint8_t *par, uint16_t len);
+esp_err_t ble_mesh_send_opcode_vender_E1(uint8_t *par, uint16_t len);
+esp_err_t ble_mesh_send_opcode_vender_E3(uint8_t *par, uint16_t len);
+esp_err_t ble_mesh_update_state_onoff(uint8_t eleIdx, uint8_t onoff);
 esp_err_t ble_mesh_rsp_opcode_vender_E0(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len);
 esp_err_t ble_mesh_rsp_opcode_vender_E2(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len);
 
