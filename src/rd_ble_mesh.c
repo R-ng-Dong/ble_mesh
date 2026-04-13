@@ -915,11 +915,11 @@ void rd_ble_mesh_init(void)
     }
     if (esp_ble_mesh_node_is_provisioned())
     {
-        printf("provisioned\n");
+        ESP_LOGW(TAG, "provisioned");
     }
     else
     {
-        printf("un provision\n");
+        ESP_LOGW(TAG, "un provision");
     }
     esp_ble_mesh_ble_scan_param_t scan_param = {0 };
     err = esp_ble_mesh_start_ble_scanning(&scan_param);
@@ -1131,7 +1131,7 @@ esp_err_t ble_mesh_rsp_opcode_vender_E0(ble_mesh_cb_param_t param, uint8_t *par,
                                                         len, par);
     if (err)
     { 
-        ESP_LOGE("MESS_RSP_E0", "Failed to send message 0x%06x", RD_OPCODE_RSP_E0);
+        ESP_LOGE(TAG, "Failed to send message 0x%06x", RD_OPCODE_RSP_E0);
     }
     return err;   
 }
@@ -1142,7 +1142,7 @@ esp_err_t ble_mesh_rsp_opcode_vender_E2(ble_mesh_cb_param_t param, uint8_t *par,
                                                         len, par);
     if (err)
     { 
-        ESP_LOGE("MESS_RSP_E0", "Failed to send message 0x%06x", RD_OPCODE_RSP_E2);
+        ESP_LOGE(TAG, "Failed to send message 0x%06x", RD_OPCODE_RSP_E2);
     }
     return err; 
 }
