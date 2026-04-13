@@ -451,7 +451,7 @@ static void example_change_led_state(esp_ble_mesh_model_t *model,
             if (ctx->recv_dst == (primary_addr + i)) {
                 //control 1 element
                 uint16_t data_send = (i<<8) | onoff; 
-                printf("control ele: %d, addr: 0x%04X, stt: %d\n", i, ctx->recv_dst, onoff);
+                ESP_LOGI(TAG, "control ele: %d, addr: 0x%04X, stt: %d\n", i, ctx->recv_dst, onoff);
                 esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_BY_UNICAST_ADDR, &data_send, sizeof(data_send), pdMS_TO_TICKS(10));
             }
         }
@@ -459,13 +459,13 @@ static void example_change_led_state(esp_ble_mesh_model_t *model,
         if (esp_ble_mesh_is_model_subscribed_to_group(model, ctx->recv_dst)) {
             // control group
             uint8_t ele_idx = model->element->element_addr - primary_addr;
-            printf("control group addr: 0x%04X, stt: %d\n", ctx->recv_dst, onoff);
+            ESP_LOGI(TAG, "control group addr: 0x%04X, stt: %d\n", ctx->recv_dst, onoff);
             uint16_t data_send = (ele_idx<<8) | onoff;
             esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_BY_GROUP_ADDR, &data_send, sizeof(data_send), pdMS_TO_TICKS(10));
         }
     } else if (ctx->recv_dst == 0xFFFF) {
         // control all element
-        printf("control all ele, stt: %d\n", onoff);
+        ESP_LOGI(TAG, "control all ele, stt: %d\n", onoff);
         esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_ALL, &onoff, 1, pdMS_TO_TICKS(10));
     }
 }
@@ -1160,7 +1160,7 @@ void ble_mesh_add_group(uint16_t id_group){
     uint16_t model_id = ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV;
     uint16_t company_id = 0xffff; // SIG_MODEL: company_id = 0xffff
 
-    printf("add group: 0x%04x\n", id_group);
+    ESP_LOGI(TAG, "add group: 0x%04x\n", id_group);
     esp_ble_mesh_model_subscribe_group_addr(primary_addr, company_id, model_id, id_group);
 }
 
@@ -1169,7 +1169,7 @@ void ble_mesh_del_group(uint16_t id_group){
     uint16_t model_id = ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV;
     uint16_t company_id = 0xffff; // SIG_MODEL: company_id = 0xffff
 
-    printf("delete group: 0x%04x\n", id_group);
+    ESP_LOGI(TAG, "delete group: 0x%04x\n", id_group);
     esp_ble_mesh_model_unsubscribe_group_addr(primary_addr, company_id, model_id, id_group);
 
 }
