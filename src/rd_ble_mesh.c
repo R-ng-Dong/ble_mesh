@@ -345,8 +345,9 @@ static esp_ble_mesh_model_op_t vnd_op3[] = {
  * @brief Cấu hình vender model cho các node
  * 
  */
+ESP_BLE_MESH_MODEL_PUB_DEFINE(vnd_pub, 20, ROLE_NODE);
 esp_ble_mesh_model_t vnd_models[] = {
-    ESP_BLE_MESH_VENDOR_MODEL(CID_ESP, ESP_BLE_MESH_VND_MODEL_ID_SERVER, vnd_op, NULL, NULL),
+    ESP_BLE_MESH_VENDOR_MODEL(CID_ESP, ESP_BLE_MESH_VND_MODEL_ID_SERVER, vnd_op, &vnd_pub, NULL),
 };
 
 #if CONFIG_MAX_NUM_ELEMENT >=2
@@ -775,6 +776,12 @@ void ble_mesh_time_scene_server_callback(esp_ble_mesh_time_scene_server_cb_event
             //TODO
             esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_RECALL_SCENE, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));
         }
+        else if(param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_RECALL_UNACK)
+        {
+            ESP_LOGI(TAG, "recall Scene unack 0x%04X", scene_number);
+            //TODO
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_RECALL_SCENE_UNACK, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));            
+        }
         break;
     default:
         ESP_LOGW(TAG, "unknown scene event: %d", event);
@@ -1094,23 +1101,13 @@ esp_err_t ble_mesh_model_sensor_send_msg(uint8_t *par, uint16_t len){
 }
 
 esp_err_t ble_mesh_send_opcode_vender_E1(uint8_t *par, uint16_t len){
-    esp_ble_mesh_msg_ctx_t ctx;
-    ctx.net_idx = 0x0000;
-    ctx.app_idx = 0x0000;
-    ctx.addr = GW_ADDR; 
-    ctx.send_ttl = ESP_BLE_MESH_TTL_DEFAULT;
-    ctx.send_rel = 0;  
-    return rd_ble_mesh_server_model_send_msg(&vnd_models[0], &ctx, RD_OPCODE_RSP_E0, len, par); 
+    vnd_models[0].pub->publish_addr = GW_ADDR;
+    return rd_ble_mesh_model_publish(&vnd_models[0], RD_OPCODE_RSP_E0, len, par);
 }
 
 esp_err_t ble_mesh_send_opcode_vender_E3(uint8_t *par, uint16_t len){
-    esp_ble_mesh_msg_ctx_t ctx;
-    ctx.net_idx = 0x0000;
-    ctx.app_idx = 0x0000;
-    ctx.addr = GW_ADDR; 
-    ctx.send_ttl = ESP_BLE_MESH_TTL_DEFAULT;
-    ctx.send_rel = 0;  
-    return rd_ble_mesh_server_model_send_msg(&vnd_models[0], &ctx, RD_OPCODE_RSP_E2, len, par);
+    vnd_models[0].pub->publish_addr = GW_ADDR;
+    return rd_ble_mesh_model_publish(&vnd_models[0], RD_OPCODE_RSP_E2, len, par);
 }
 
 esp_err_t ble_mesh_update_state_onoff(uint8_t eleIdx, uint8_t onoff){

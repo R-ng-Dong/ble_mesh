@@ -83,7 +83,8 @@ typedef enum {
 typedef enum {
     EVENT_MESH_STORE_SCENE = 0,
     EVENT_MESH_RECALL_SCENE,
-    EVENT_MESH_DELETE_SCENE
+    EVENT_MESH_DELETE_SCENE,
+    EVENT_MESH_RECALL_SCENE_UNACK
 } rd_mesh_scene_model_event_t;
 
 
