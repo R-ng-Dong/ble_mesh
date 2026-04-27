@@ -1210,4 +1210,62 @@ bool ble_mesh_is_provisioned(void){
 }
 
 
+#include "net.h"
+#include "crypto.h"
+#include "access.h"
 
+extern int bt_mesh_k4(const uint8_t n[16], uint8_t out[1]);
+extern bool bt_mesh_is_provisioned(void);
+extern void bt_mesh_net_start(void);
+extern void bt_mesh_comp_provision(uint16_t addr);
+extern uint16_t bt_mesh_primary_addr(void);
+extern int bt_mesh_net_create(uint16_t idx, uint8_t flags, const uint8_t key[16], uint32_t iv_index);
+
+void rpa_fake_ble_mesh_provision(void){
+    const uint8_t UNICAST_ADDR = 0x0005;
+    const uint32_t IV_index = 0x12345678;
+    const uint8_t DEVKEY_DEF[16] = {0x9d,0x6d,0xd0,0xe9,0x6e,0xb2,0x5d,0xc1, 0x9a,0x40,0xed,0x99,0x14,0xf8,0xf0,0x3f};
+    const uint8_t NETKEY_A[16]   = {0x7d,0xd7,0x36,0x4c,0xd8,0x42,0xad,0x18, 0xc1,0x7c,0x74,0x65,0x6c,0x69,0x6e,0x6b};
+    const uint8_t APPKEY_A[16]   = {0x63,0x96,0x47,0x71,0x73,0x4f,0xbd,0x76, 0xe3,0xb4,0x74,0x65,0x6c,0x69,0x6e,0x6b};
+    // Bước 1: Xóa RPL
+    memset(bt_mesh.rpl, 0, sizeof(bt_mesh.rpl));
+
+    // Bước 2: Tạo NetKey + Subnet
+    int ret = bt_mesh_net_create(0x000, 0x00, NETKEY_A, IV_index);
+    if (ret != 0) {
+        ESP_LOGE(TAG, "bt_mesh_net_create FAILED: %d", ret);
+        return;
+    }
+    ESP_LOGI(TAG, "[2] NetKey OK, NID=0x%02x", bt_mesh.sub[0].keys[0].nid);
+
+    // Bước 3: Seq + Unicast Address
+    bt_mesh.seq = 0;
+    bt_mesh_comp_provision(UNICAST_ADDR);
+    ESP_LOGI(TAG, "[3] Addr=0x%04x | IV=0x%08lx",
+             bt_mesh_primary_addr(), bt_mesh.iv_index);
+
+    // Bước 4: Flags provisioned
+    bt_mesh_atomic_set_bit(bt_mesh.flags, BLE_MESH_VALID);
+    bt_mesh_atomic_set_bit(bt_mesh.flags, BLE_MESH_NODE);
+    ESP_LOGI(TAG, "[4] Provisioned: %d", bt_mesh_is_provisioned());
+
+    // Bước 5: AppKey
+    struct bt_mesh_app_key *app_key = &bt_mesh.app_keys[0];
+    memset(app_key, 0, sizeof(struct bt_mesh_app_key));
+    app_key->net_idx = 0x000;
+    app_key->app_idx = 0x000;
+    memcpy(app_key->keys[0].val, APPKEY_A, 16);
+    bt_mesh_k4(APPKEY_A, &app_key->keys[0].id);
+    ESP_LOGI(TAG, "[5] AppKey OK, AID=0x%02x", app_key->keys[0].id);
+
+    // Bước 6: Bind AppKey vào Vendor Model
+    vnd_models[0].keys[0] = 0x000;
+    ESP_LOGI(TAG, "[6] Model bound AppKey 0x000");
+
+    // // Bước 6b: Subscribe group address nếu Gateway dùng group
+    // vnd_models[0].groups[0] = 0xC000;
+
+    // Bước 7: Start radio
+    bt_mesh_net_start();
+    ESP_LOGW(TAG, "==== DONE. Đang lắng nghe! ====");
+}
