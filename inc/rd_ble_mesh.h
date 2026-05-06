@@ -19,6 +19,7 @@ ESP_EVENT_DECLARE_BASE(EVENT_MESH_SCENE_MODEL);
 #define CONFIG_MAX_NUM_ELEMENT  3
 #define CONFIG_USE_SDK_ROGO     1
 #define LOG_RAW_DATA_BLE_ADV    0
+#define MAX_SCENE_STORE         48
 
 /*!< Generic OnOff Message Opcode */
 #define BLE_MESH_MODEL_OP_GEN_ONOFF_GET                         RD_BLE_MESH_MODEL_OP_2(0x82, 0x01)

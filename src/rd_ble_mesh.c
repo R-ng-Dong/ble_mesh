@@ -5,9 +5,22 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 
+#ifdef CONFIG_BT_BLUEDROID_ENABLED
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 #include "esp_bt_device.h"
+#endif
+
+#ifdef CONFIG_BT_NIMBLE_ENABLED
+#include "nimble/nimble_port.h"
+#include "nimble/nimble_port_freertos.h"
+#include "host/ble_hs.h"
+#include "host/util/util.h"
+#include "console/console.h"
+#include "services/ans/ble_svc_ans.h"
+#include "services/gap/ble_svc_gap.h"
+#include "services/gatt/ble_svc_gatt.h"
+#endif
 
 #include "esp_ble_mesh_defs.h"
 #include "esp_ble_mesh_common_api.h"
@@ -34,7 +47,7 @@
 #define ESP_BLE_MESH_VND_MODEL_ID_CLIENT    0x0000
 #define ESP_BLE_MESH_VND_MODEL_ID_SERVER    0x0001
 
-#define MAX_SCENE_STORE     16
+
 #define SCENE_VALUE_MAX_LEN 8 // max 1 bytes
 
 ESP_EVENT_DEFINE_BASE(EVENT_MESH_CONFIG_SERVER);
@@ -81,6 +94,8 @@ static esp_ble_mesh_scene_register_t my_scenes_0[MAX_SCENE_STORE];
 
 static esp_ble_mesh_scenes_state_t scene_state_0 = {
     .scene_count = MAX_SCENE_STORE,
+    .current_scene = 0x0000,  
+    .target_scene  = 0x0000,
     .scenes = my_scenes_0,
 };
 
@@ -89,7 +104,8 @@ static void init_scene_values(void)
     for (int i = 0; i < MAX_SCENE_STORE; i++)
     {
         net_buf_simple_init_with_data(&scene_buffers_0[i], scene_data_0[i], SCENE_VALUE_MAX_LEN);
-        my_scenes_0[i].scene_number = i + 0x0001;
+        scene_buffers_0[i].len = 0;
+        my_scenes_0[i].scene_number = 0x0000;
         my_scenes_0[i].scene_type = 0;
         my_scenes_0[i].scene_value = &scene_buffers_0[i];
     }
@@ -112,6 +128,60 @@ static esp_ble_mesh_scene_srv_t scene_srv_0 = {
     },
     .state = &scene_state_0,
 };
+
+#if CONFIG_MAX_NUM_ELEMENT >=2
+ESP_BLE_MESH_MODEL_PUB_DEFINE(scene_pub_1, 5 + 3, ROLE_NODE);
+static esp_ble_mesh_scene_srv_t scene_srv_1 = {
+    .rsp_ctrl = {
+        .get_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+        .set_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+    },
+    .state = &scene_state_0,
+};
+static esp_ble_mesh_scene_setup_srv_t scene_setup_srv_1 = {
+    .rsp_ctrl = {
+        .get_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+        .set_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+    },
+    .state = &scene_state_0,
+};
+#endif
+
+#if CONFIG_MAX_NUM_ELEMENT >=3
+ESP_BLE_MESH_MODEL_PUB_DEFINE(scene_pub_2, 5 + 3, ROLE_NODE);
+static esp_ble_mesh_scene_srv_t scene_srv_2 = {
+    .rsp_ctrl = {
+        .get_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+        .set_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+    },
+    .state = &scene_state_0,
+};
+static esp_ble_mesh_scene_setup_srv_t scene_setup_srv_2 = {
+    .rsp_ctrl = {
+        .get_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+        .set_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+    },
+    .state = &scene_state_0,
+};
+#endif
+
+#if CONFIG_MAX_NUM_ELEMENT >=4
+ESP_BLE_MESH_MODEL_PUB_DEFINE(scene_pub_3, 5 + 3, ROLE_NODE);
+static esp_ble_mesh_scene_srv_t scene_srv_3 = {
+    .rsp_ctrl = {
+        .get_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+        .set_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+    },
+    .state = &scene_state_0,
+};
+static esp_ble_mesh_scene_setup_srv_t scene_setup_srv_3 = {
+    .rsp_ctrl = {
+        .get_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+        .set_auto_rsp = ESP_BLE_MESH_SERVER_AUTO_RSP,
+    },
+    .state = &scene_state_0,
+};
+#endif
 
 /*!<--- SCENE CLIENT ---*/
 static esp_ble_mesh_client_t scene_client;
@@ -293,18 +363,24 @@ static esp_ble_mesh_model_t root_models[] = {
 #if CONFIG_MAX_NUM_ELEMENT >=2
 esp_ble_mesh_model_t sig_models1[] = {
     ESP_BLE_MESH_MODEL_GEN_ONOFF_SRV(&onoff_pub_1, &onoff_server_1),
+    ESP_BLE_MESH_MODEL_SCENE_SRV(&scene_pub_1, &scene_srv_1),    // recall scene
+    ESP_BLE_MESH_MODEL_SCENE_SETUP_SRV(NULL, &scene_setup_srv_1),  // store/delete scene   
 };
 #endif
 
 #if CONFIG_MAX_NUM_ELEMENT >=3
 esp_ble_mesh_model_t sig_models2[] = {
     ESP_BLE_MESH_MODEL_GEN_ONOFF_SRV(&onoff_pub_2, &onoff_server_2),
+    ESP_BLE_MESH_MODEL_SCENE_SRV(&scene_pub_2, &scene_srv_2),    // recall scene
+    ESP_BLE_MESH_MODEL_SCENE_SETUP_SRV(NULL, &scene_setup_srv_2),  // store/delete scene 
 };
 #endif
 
 #if CONFIG_MAX_NUM_ELEMENT >=4
 esp_ble_mesh_model_t sig_models3[] = {
     ESP_BLE_MESH_MODEL_GEN_ONOFF_SRV(&onoff_pub_3, &onoff_server_3),
+    ESP_BLE_MESH_MODEL_SCENE_SRV(&scene_pub_3, &scene_srv_3),    // recall scene
+    ESP_BLE_MESH_MODEL_SCENE_SETUP_SRV(NULL, &scene_setup_srv_3),  // store/delete scene 
 };
 #endif
 
@@ -452,7 +528,7 @@ static void example_change_led_state(esp_ble_mesh_model_t *model,
             if (ctx->recv_dst == (primary_addr + i)) {
                 //control 1 element
                 uint16_t data_send = (i<<8) | onoff; 
-                ESP_LOGI(TAG, "control ele: %d, addr: 0x%04X, stt: %d\n", i, ctx->recv_dst, onoff);
+                ESP_LOGI(TAG, "control ele: %d, addr: 0x%04X, stt: %d", i, ctx->recv_dst, onoff);
                 esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_BY_UNICAST_ADDR, &data_send, sizeof(data_send), pdMS_TO_TICKS(10));
             }
         }
@@ -460,13 +536,13 @@ static void example_change_led_state(esp_ble_mesh_model_t *model,
         if (esp_ble_mesh_is_model_subscribed_to_group(model, ctx->recv_dst)) {
             // control group
             uint8_t ele_idx = model->element->element_addr - primary_addr;
-            ESP_LOGI(TAG, "control group addr: 0x%04X, stt: %d\n", ctx->recv_dst, onoff);
+            ESP_LOGI(TAG, "control group addr: 0x%04X, stt: %d", ctx->recv_dst, onoff);
             uint16_t data_send = (ele_idx<<8) | onoff;
             esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_BY_GROUP_ADDR, &data_send, sizeof(data_send), pdMS_TO_TICKS(10));
         }
     } else if (ctx->recv_dst == 0xFFFF) {
         // control all element
-        ESP_LOGI(TAG, "control all ele, stt: %d\n", onoff);
+        ESP_LOGI(TAG, "control all ele, stt: %d", onoff);
         esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_GENERIC_MODEL, EVENT_CONTROLL_ONOFF_ALL, &onoff, 1, pdMS_TO_TICKS(10));
     }
 }
@@ -478,10 +554,12 @@ static void example_change_led_state(esp_ble_mesh_model_t *model,
 esp_err_t ble_mesh_kick_out(void)
 {
     ESP_LOGW(TAG, "==============>>> RESET MESH NETWORK <<<==============");
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-    esp_err_t err = esp_ble_mesh_node_local_reset(); // reset 
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-    // esp_restart();
+    // vTaskDelay(500 / portTICK_PERIOD_MS);
+    // esp_err_t err = esp_ble_mesh_node_local_reset(); // reset 
+    // vTaskDelay(500 / portTICK_PERIOD_MS);
+    esp_err_t err = nvs_flash_erase_partition("ble_mesh");
+    vTaskDelay(200 / portTICK_PERIOD_MS);
+    esp_restart();
     return err;
 }
 
@@ -758,29 +836,29 @@ void ble_mesh_time_scene_server_callback(esp_ble_mesh_time_scene_server_cb_event
     {
     case ESP_BLE_MESH_TIME_SCENE_SERVER_STATE_CHANGE_EVT:
         uint16_t scene_number = param->value.state_change.scene_store.scene_number;
+        uint16_t ele_idx = param->ctx.recv_dst - esp_ble_mesh_get_primary_element_address();
+        uint32_t value = (ele_idx << 16) | scene_number;
         if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_STORE)
         {
-            ESP_LOGI(TAG, "store Scene 0x%04X", scene_number);
-            //TODO
-            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_STORE_SCENE, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));
+            ESP_LOGI(TAG, "store Scene 0x%04X, Element Index: 0x%04X", scene_number, ele_idx);
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_STORE_SCENE, &value, sizeof(value), pdMS_TO_TICKS(10));
         }
         else if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_DELETE)
         {
-            ESP_LOGI(TAG, "delete Scene 0x%04X", scene_number);
-            //TODO
-            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_DELETE_SCENE, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));
+            ESP_LOGI(TAG, "delete Scene 0x%04X, Element Index: 0x%04X", scene_number, ele_idx);
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_DELETE_SCENE, &value, sizeof(value), pdMS_TO_TICKS(10));
         }
         else if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_RECALL)
         {
-            ESP_LOGI(TAG, "recall Scene 0x%04X", scene_number);
-            //TODO
-            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_RECALL_SCENE, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));
+            ESP_LOGI(TAG, "recall Scene 0x%04X, Element Index: 0x%04X", scene_number, ele_idx);
+            if(scene_number == 0x0000) return;
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_RECALL_SCENE, &value, sizeof(value), pdMS_TO_TICKS(10));
         }
         else if(param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_RECALL_UNACK)
         {
-            ESP_LOGI(TAG, "recall Scene unack 0x%04X", scene_number);
-            //TODO
-            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_RECALL_SCENE_UNACK, &scene_number, sizeof(scene_number), pdMS_TO_TICKS(10));            
+            ESP_LOGI(TAG, "recall Scene 0x%04X, Element Index: 0x%04X", scene_number, ele_idx);
+            if(scene_number == 0x0000) return;
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_RECALL_SCENE_UNACK, &value, sizeof(value), pdMS_TO_TICKS(10));           
         }
         break;
     default:
@@ -844,6 +922,104 @@ static esp_err_t ble_mesh_init(void)
     return err;
 }
 
+#ifdef CONFIG_BT_NIMBLE_ENABLED
+static SemaphoreHandle_t mesh_sem;
+static uint8_t own_addr_type;
+void ble_store_config_init(void);
+static uint8_t addr_val[6] = {0};
+
+void ble_mesh_get_dev_uuid(uint8_t *dev_uuid)
+{
+    if (dev_uuid == NULL) {
+        ESP_LOGE(TAG, "%s, Invalid device uuid", __func__);
+        return;
+    }
+
+    /* Copy device address to the device uuid with offset equals to 2 here.
+     * The first two bytes is used for matching device uuid by Provisioner.
+     * And using device address here is to avoid using the same device uuid
+     * by different unprovisioned devices.
+     */
+    memcpy(dev_uuid + 2, addr_val, BD_ADDR_LEN);
+}
+
+static void mesh_on_reset(int reason)
+{
+    ESP_LOGI(TAG, "Resetting state; reason=%d", reason);
+}
+
+static void mesh_on_sync(void)
+{
+    int rc;
+
+    rc = ble_hs_util_ensure_addr(0);
+    assert(rc == 0);
+
+    /* Figure out address to use while advertising (no privacy for now) */
+    rc = ble_hs_id_infer_auto(0, &own_addr_type);
+    if (rc != 0) {
+        ESP_LOGI(TAG, "error determining address type; rc=%d", rc);
+        return;
+    }
+
+    rc = ble_hs_id_copy_addr(own_addr_type, addr_val, NULL);
+
+    xSemaphoreGive(mesh_sem);
+}
+
+void mesh_host_task(void *param)
+{
+    ESP_LOGI(TAG, "BLE Host Task Started");
+    /* This function will return only when nimble_port_stop() is executed */
+    nimble_port_run();
+    nimble_port_freertos_deinit();
+    vTaskDelete(NULL);
+}
+
+esp_err_t bluetooth_init(void)
+{
+    esp_err_t ret;
+    static bool is_bt_init = true;
+
+    if(is_bt_init)
+    {
+        is_bt_init = false;
+        mesh_sem = xSemaphoreCreateBinary();
+        if (mesh_sem == NULL) {
+            ESP_LOGE(TAG, "Failed to create mesh semaphore");
+            return ESP_FAIL;
+        }
+    }
+
+    ret = nimble_port_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to init nimble %d ", ret);
+        return ret;
+    }
+
+    /* Initialize the NimBLE host configuration. */
+    ble_hs_cfg.reset_cb = mesh_on_reset;
+    ble_hs_cfg.sync_cb = mesh_on_sync;
+    ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
+
+    /* XXX Need to have template for store */
+    ble_store_config_init();
+
+    nimble_port_freertos_init(mesh_host_task);
+
+    xSemaphoreTake(mesh_sem, portMAX_DELAY);
+
+    return ESP_OK;
+}
+ 
+void nimBle_init_mesh(void)
+{
+    bluetooth_init();
+}
+
+#endif /* CONFIG_BT_NIMBLE_ENABLED */
+
+#ifdef CONFIG_BT_BLUEDROID_ENABLED
 void ble_mesh_get_dev_uuid(uint8_t *dev_uuid)
 {
     if (dev_uuid == NULL) {
@@ -885,6 +1061,7 @@ esp_err_t bluetooth_init(void)
 
     return ret;
 }
+#endif
 
 static bool is_ble_mesh_init = false;
 /**
@@ -911,7 +1088,7 @@ void rd_ble_mesh_init(void)
         return;
     }
 #endif
-
+    nvs_flash_init_partition("ble_mesh");
     ble_mesh_get_dev_uuid(dev_uuid);
     init_scene_values(); //NOTE init scene value
     sensor_model_init(); // init sensor value
@@ -951,11 +1128,11 @@ void rd_continue_ble_mesh(void)
 
         if (esp_ble_mesh_node_is_provisioned())
         {
-            printf("device provisioned\n");
+            ESP_LOGI(TAG, "device provisioned");
         }
         else
         {
-            printf("device un provisioned, esp_ble_mesh_node_prov_enable\n");
+            ESP_LOGI(TAG, "device un provisioned, esp_ble_mesh_node_prov_enable");
             err = esp_ble_mesh_node_prov_enable((esp_ble_mesh_prov_bearer_t)(ESP_BLE_MESH_PROV_ADV | ESP_BLE_MESH_PROV_GATT));
             vTaskDelay(pdMS_TO_TICKS(100));
             if (err != ESP_OK)
@@ -1157,7 +1334,7 @@ void ble_mesh_add_group(uint16_t id_group){
     uint16_t model_id = ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV;
     uint16_t company_id = 0xffff; // SIG_MODEL: company_id = 0xffff
 
-    ESP_LOGI(TAG, "add group: 0x%04x\n", id_group);
+    ESP_LOGI(TAG, "add group: 0x%04x", id_group);
     esp_ble_mesh_model_subscribe_group_addr(primary_addr, company_id, model_id, id_group);
 }
 
@@ -1166,7 +1343,7 @@ void ble_mesh_del_group(uint16_t id_group){
     uint16_t model_id = ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV;
     uint16_t company_id = 0xffff; // SIG_MODEL: company_id = 0xffff
 
-    ESP_LOGI(TAG, "delete group: 0x%04x\n", id_group);
+    ESP_LOGI(TAG, "delete group: 0x%04x", id_group);
     esp_ble_mesh_model_unsubscribe_group_addr(primary_addr, company_id, model_id, id_group);
 
 }
@@ -1204,6 +1381,67 @@ uint16_t ble_mesh_get_gw_addr(void){
 
 bool ble_mesh_is_provisioned(void){
     return esp_ble_mesh_node_is_provisioned();
+}
+
+
+#include "net.h"
+#include "crypto.h"
+#include "access.h"
+
+extern int bt_mesh_k4(const uint8_t n[16], uint8_t out[1]);
+extern bool bt_mesh_is_provisioned(void);
+extern void bt_mesh_net_start(void);
+extern void bt_mesh_comp_provision(uint16_t addr);
+extern uint16_t bt_mesh_primary_addr(void);
+extern int bt_mesh_net_create(uint16_t idx, uint8_t flags, const uint8_t key[16], uint32_t iv_index);
+
+void rpa_fake_ble_mesh_provision(void){
+    const uint8_t UNICAST_ADDR = 0x0005;
+    const uint32_t IV_index = 0x12345678;
+    const uint8_t DEVKEY_DEF[16] = {0x9d,0x6d,0xd0,0xe9,0x6e,0xb2,0x5d,0xc1, 0x9a,0x40,0xed,0x99,0x14,0xf8,0xf0,0x3f};
+    const uint8_t NETKEY_A[16]   = {0x7d,0xd7,0x36,0x4c,0xd8,0x42,0xad,0x18, 0xc1,0x7c,0x74,0x65,0x6c,0x69,0x6e,0x6b};
+    const uint8_t APPKEY_A[16]   = {0x63,0x96,0x47,0x71,0x73,0x4f,0xbd,0x76, 0xe3,0xb4,0x74,0x65,0x6c,0x69,0x6e,0x6b};
+    // Bước 1: Xóa RPL
+    memset(bt_mesh.rpl, 0, sizeof(bt_mesh.rpl));
+
+    // Bước 2: Tạo NetKey + Subnet
+    int ret = bt_mesh_net_create(0x000, 0x00, NETKEY_A, IV_index);
+    if (ret != 0) {
+        ESP_LOGE(TAG, "bt_mesh_net_create FAILED: %d", ret);
+        return;
+    }
+    ESP_LOGI(TAG, "[2] NetKey OK, NID=0x%02x", bt_mesh.sub[0].keys[0].nid);
+
+    // Bước 3: Seq + Unicast Address
+    bt_mesh.seq = 0;
+    bt_mesh_comp_provision(UNICAST_ADDR);
+    ESP_LOGI(TAG, "[3] Addr=0x%04x | IV=0x%08lx",
+             bt_mesh_primary_addr(), bt_mesh.iv_index);
+
+    // Bước 4: Flags provisioned
+    bt_mesh_atomic_set_bit(bt_mesh.flags, BLE_MESH_VALID);
+    bt_mesh_atomic_set_bit(bt_mesh.flags, BLE_MESH_NODE);
+    ESP_LOGI(TAG, "[4] Provisioned: %d", bt_mesh_is_provisioned());
+
+    // Bước 5: AppKey
+    struct bt_mesh_app_key *app_key = &bt_mesh.app_keys[0];
+    memset(app_key, 0, sizeof(struct bt_mesh_app_key));
+    app_key->net_idx = 0x000;
+    app_key->app_idx = 0x000;
+    memcpy(app_key->keys[0].val, APPKEY_A, 16);
+    bt_mesh_k4(APPKEY_A, &app_key->keys[0].id);
+    ESP_LOGI(TAG, "[5] AppKey OK, AID=0x%02x", app_key->keys[0].id);
+
+    // Bước 6: Bind AppKey vào Vendor Model
+    vnd_models[0].keys[0] = 0x000;
+    ESP_LOGI(TAG, "[6] Model bound AppKey 0x000");
+
+    // // Bước 6b: Subscribe group address nếu Gateway dùng group
+    // vnd_models[0].groups[0] = 0xC000;
+
+    // Bước 7: Start radio
+    bt_mesh_net_start();
+    ESP_LOGW(TAG, "==== DONE. Đang lắng nghe! ====");
 }
 
 

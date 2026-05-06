@@ -1,6 +1,9 @@
 ## Copy sdkconfig.mesh_defaults vào thư mục root và thêm dòng này vào Cmake 
 Cmake root add: list(APPEND SDKCONFIG_DEFAULTS "sdkconfig.mesh_defaults")<br>
 
+## Thêm vùng nhớ ble_mesh vào partition table
+ble_mesh,       data,   nvs,              ,     0x8000
+
 ## Cấu hình mạng mesh bằng net key, app key mặc định
 
 1. Truy cập vào file **cfg_srv.c** theo đường dẫn "components/bt/esp_ble_mesh/core"
