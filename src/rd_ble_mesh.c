@@ -111,6 +111,13 @@ static void init_scene_values(void)
     }
 }
 
+void ble_mesh_init_scene_id(uint16_t scene_id[MAX_SCENE_STORE]){
+    for (int i = 0; i < MAX_SCENE_STORE; i++)
+    {
+        if(scene_id != 0xffff) my_scenes_0[i].scene_number = scene_id[i];
+    }
+}
+
 /*!<--- SCENE SEVER ---*/
 ESP_BLE_MESH_MODEL_PUB_DEFINE(scene_pub_0, 5 + 3, ROLE_NODE);
 static esp_ble_mesh_scene_setup_srv_t scene_setup_srv = {
@@ -347,7 +354,7 @@ static esp_ble_mesh_light_ctl_temp_srv_t lightcct_server_0 = {
 static esp_ble_mesh_model_t root_models[] = {
     ESP_BLE_MESH_MODEL_CFG_SRV(&config_server),
     ESP_BLE_MESH_MODEL_GEN_ONOFF_SRV(&onoff_pub_0, &onoff_server_0),
-    ESP_BLE_MESH_MODEL_SENSOR_SRV(&sensor_pub, &sensor_srv),
+    // ESP_BLE_MESH_MODEL_SENSOR_SRV(&sensor_pub, &sensor_srv),
 #if CONFIG_BLE_MESH_GENERIC_ONOFF_CLI
     ESP_BLE_MESH_MODEL_GEN_ONOFF_CLI(&onoff_client_pub, &onoff_client_0),
 #endif
@@ -1395,7 +1402,7 @@ extern void bt_mesh_comp_provision(uint16_t addr);
 extern uint16_t bt_mesh_primary_addr(void);
 extern int bt_mesh_net_create(uint16_t idx, uint8_t flags, const uint8_t key[16], uint32_t iv_index);
 
-void rpa_fake_ble_mesh_provision(void){
+void rd_fake_ble_mesh_provision(void){
     const uint8_t UNICAST_ADDR = 0x0005;
     const uint32_t IV_index = 0x12345678;
     const uint8_t DEVKEY_DEF[16] = {0x9d,0x6d,0xd0,0xe9,0x6e,0xb2,0x5d,0xc1, 0x9a,0x40,0xed,0x99,0x14,0xf8,0xf0,0x3f};

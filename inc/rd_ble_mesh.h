@@ -121,4 +121,7 @@ esp_err_t ble_mesh_update_state_onoff(uint8_t eleIdx, uint8_t onoff);
 esp_err_t ble_mesh_rsp_opcode_vender_E0(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len);
 esp_err_t ble_mesh_rsp_opcode_vender_E2(ble_mesh_cb_param_t param, uint8_t *par, uint8_t len);
 
+void rd_fake_ble_mesh_provision(void);
+void ble_mesh_init_scene_id(uint16_t scene_id[MAX_SCENE_STORE]);
+
 #endif /* _RD_BLE_MESH_H__ */
