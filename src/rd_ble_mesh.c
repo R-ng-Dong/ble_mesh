@@ -605,13 +605,15 @@ static void example_ble_mesh_config_server_cb(esp_ble_mesh_cfg_server_cb_event_t
                      param->value.state_change.mod_sub_add.company_id,
                      param->value.state_change.mod_sub_add.model_id);
             uint16_t sub_addr = param->value.state_change.mod_sub_add.sub_addr;
-            ble_mesh_add_group(param->value.state_change.mod_sub_add.sub_addr);
+            ble_mesh_add_group(param->value.state_change.mod_sub_add.element_addr, param->value.state_change.mod_sub_add.sub_addr);
             esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_SUB_ADD_GROUP, &sub_addr, sizeof(sub_addr), pdMS_TO_TICKS(10));
             break;
         case ESP_BLE_MESH_MODEL_OP_MODEL_SUB_DELETE:
-            ESP_LOGI(TAG, "ESP_BLE_MESH_MODEL_OP_MODEL_SUB_DELETE delete group id: %04x", param->value.state_change.mod_sub_delete.sub_addr);
+            ESP_LOGI(TAG, "ESP_BLE_MESH_MODEL_OP_MODEL_SUB_DELETE delete group id: %04x, element address: %04x",
+                     param->value.state_change.mod_sub_delete.sub_addr,
+                     param->value.state_change.mod_sub_delete.element_addr);
             uint16_t gr_addr = param->value.state_change.mod_sub_delete.sub_addr;
-            ble_mesh_del_group(param->value.state_change.mod_sub_delete.sub_addr);
+            ble_mesh_del_group(param->value.state_change.mod_sub_delete.element_addr, param->value.state_change.mod_sub_delete.sub_addr);
             esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_SUB_DELETE_GROUP, &gr_addr, sizeof(gr_addr), pdMS_TO_TICKS(10));
         default:
             break;
@@ -756,7 +758,7 @@ void ble_mesh_time_scene_server_callback(esp_ble_mesh_time_scene_server_cb_event
     switch (event)
     {
     case ESP_BLE_MESH_TIME_SCENE_SERVER_STATE_CHANGE_EVT:
-        uint16_t scene_number = param->value.state_change.scene_store.scene_number;
+        uint16_t scene_number = param->model->element_idx;//param->value.state_change.scene_store.scene_number;
         if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_STORE)
         {
             ESP_LOGI(TAG, "store Scene 0x%04X", scene_number);
@@ -1088,6 +1090,16 @@ esp_err_t ble_mesh_client_model_scene_send_msg(uint32_t opcode, uint16_t dst_add
     return rd_ble_mesh_client_model_send_msg(scene_client.model, &ctx, opcode, len, par, 0, false); // ~ &root_model[7]
 }
 
+esp_err_t ble_mesh_client_model_generic_send_msg(uint32_t opcode, uint16_t dst_addr, uint8_t *par, uint16_t len){
+    esp_ble_mesh_msg_ctx_t ctx;
+    ctx.net_idx = 0x0000;
+    ctx.app_idx = 0x0000;
+    ctx.addr = dst_addr; 
+    ctx.send_ttl = ESP_BLE_MESH_TTL_DEFAULT;
+    ctx.send_rel = 0;  
+    return rd_ble_mesh_client_model_send_msg(onoff_client_0.model, &ctx, opcode, len, par, 0, false); 
+}
+
 esp_err_t ble_mesh_model_sensor_send_msg(uint8_t *par, uint16_t len){
     sensor_srv.model->pub->publish_addr = GW_ADDR;
     return rd_ble_mesh_model_publish(sensor_srv.model, BLE_MESH_MODEL_OP_SENSOR_STATUS, len, par);
@@ -1155,22 +1167,20 @@ uint8_t ble_mesh_get_element_index(ble_mesh_cb_param_t param){
     return ele_idx;
 }
 
-void ble_mesh_add_group(uint16_t id_group){
-    uint16_t primary_addr = esp_ble_mesh_get_primary_element_address();
+void ble_mesh_add_group(uint16_t elem_addr, uint16_t id_group){
     uint16_t model_id = ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV;
     uint16_t company_id = 0xffff; // SIG_MODEL: company_id = 0xffff
 
     ESP_LOGI(TAG, "add group: 0x%04x\n", id_group);
-    esp_ble_mesh_model_subscribe_group_addr(primary_addr, company_id, model_id, id_group);
+    esp_ble_mesh_model_subscribe_group_addr(elem_addr, company_id, model_id, id_group);
 }
 
-void ble_mesh_del_group(uint16_t id_group){
-    uint16_t primary_addr = esp_ble_mesh_get_primary_element_address();
+void ble_mesh_del_group(uint16_t elem_addr, uint16_t id_group){
     uint16_t model_id = ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV;
     uint16_t company_id = 0xffff; // SIG_MODEL: company_id = 0xffff
 
     ESP_LOGI(TAG, "delete group: 0x%04x\n", id_group);
-    esp_ble_mesh_model_unsubscribe_group_addr(primary_addr, company_id, model_id, id_group);
+    esp_ble_mesh_model_unsubscribe_group_addr(elem_addr, company_id, model_id, id_group);
 
 }
 

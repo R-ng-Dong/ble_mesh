@@ -99,8 +99,8 @@ void      rd_ble_mesh_register_cb_handle_mess_opcode_E0(rd_handle_message_opcode
 void      rd_ble_mesh_register_cb_handle_mess_opcode_E2(rd_handle_message_opcode_vender cb);
 void      rd_ble_mesh_register_cb_send_ble_adv(rd_ble_mesh_send_ble_adv cb);
 
-void      ble_mesh_add_group(uint16_t id_group);
-void      ble_mesh_del_group(uint16_t id_group);
+void      ble_mesh_add_group(uint16_t elem_addr, uint16_t id_group);
+void      ble_mesh_del_group(uint16_t elem_addr, uint16_t id_group);
 void      ble_mesh_get_mac(uint8_t mac[6]);
 void      ble_mesh_set_gw_addr(uint16_t addr);
 uint16_t  ble_mesh_get_gw_addr(void);
@@ -112,6 +112,7 @@ void      ble_mesh_get_mess_buf(ble_mesh_cb_param_t param, uint8_t **buff, uint1
 uint32_t  ble_mesh_get_opcode(ble_mesh_cb_param_t param);
 
 esp_err_t ble_mesh_client_model_scene_send_msg(uint32_t opcode, uint16_t dst_addr, uint8_t *par, uint16_t len);
+esp_err_t ble_mesh_client_model_generic_send_msg(uint32_t opcode, uint16_t dst_addr, uint8_t *par, uint16_t len);
 esp_err_t ble_mesh_model_sensor_send_msg(uint8_t *par, uint16_t len);
 esp_err_t ble_mesh_send_opcode_vender_E1(uint8_t *par, uint16_t len);
 esp_err_t ble_mesh_send_opcode_vender_E3(uint8_t *par, uint16_t len);
