@@ -1081,7 +1081,7 @@ static esp_err_t rd_ble_mesh_server_model_update_state(esp_ble_mesh_model_t *mod
 /*------------------------------------------------------------------------------------------------*/
 
 esp_err_t ble_mesh_client_model_scene_send_msg(uint32_t opcode, uint16_t dst_addr, uint8_t *par, uint16_t len){
-    esp_ble_mesh_msg_ctx_t ctx;
+    esp_ble_mesh_msg_ctx_t ctx = {0};
     ctx.net_idx = 0x0000;
     ctx.app_idx = 0x0000;
     ctx.addr = dst_addr; 
@@ -1091,7 +1091,7 @@ esp_err_t ble_mesh_client_model_scene_send_msg(uint32_t opcode, uint16_t dst_add
 }
 
 esp_err_t ble_mesh_client_model_generic_send_msg(uint32_t opcode, uint16_t dst_addr, uint8_t *par, uint16_t len){
-    esp_ble_mesh_msg_ctx_t ctx;
+    esp_ble_mesh_msg_ctx_t ctx = {0};
     ctx.net_idx = 0x0000;
     ctx.app_idx = 0x0000;
     ctx.addr = dst_addr; 
