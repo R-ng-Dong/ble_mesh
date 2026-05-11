@@ -31,7 +31,9 @@
 #include "esp_ble_mesh_local_data_operation_api.h"
 #include "esp_ble_mesh_lighting_model_api.h"
 #include "esp_ble_mesh_time_scene_model_api.h"
+#if CONFIG_BLE_MESH_SENSOR_SERVER
 #include "esp_ble_mesh_sensor_model_api.h"
+#endif
 #include "esp_ble_mesh_ble_api.h" // BLE ADV
 
 #include "rd_ble_mesh.h"
@@ -198,6 +200,7 @@ ESP_BLE_MESH_MODEL_PUB_DEFINE(scene_cli_pub_0, 5 + 3, ROLE_NODE);
 /*==========================================================================
                                SENSOR MODEL
 ============================================================================*/
+#if CONFIG_BLE_MESH_SENSOR_SERVER
 ESP_BLE_MESH_MODEL_PUB_DEFINE(sensor_pub, 8, ROLE_NODE);
 static esp_ble_mesh_sensor_state_t sensor_states;
 static esp_ble_mesh_sensor_srv_t sensor_srv = {
@@ -219,6 +222,7 @@ void sensor_model_init(void)
     sensor_states.sensor_data.format = ESP_BLE_MESH_SENSOR_DATA_FORMAT_A;
     sensor_states.sensor_data.raw_value = &sensor_buf;
 }
+#endif
 
 /*==========================================================================
                         GENERIC MODEL ONOFF
@@ -370,24 +374,24 @@ static esp_ble_mesh_model_t root_models[] = {
 #if CONFIG_MAX_NUM_ELEMENT >=2
 esp_ble_mesh_model_t sig_models1[] = {
     ESP_BLE_MESH_MODEL_GEN_ONOFF_SRV(&onoff_pub_1, &onoff_server_1),
-    ESP_BLE_MESH_MODEL_SCENE_SRV(&scene_pub_1, &scene_srv_1),    // recall scene
-    ESP_BLE_MESH_MODEL_SCENE_SETUP_SRV(NULL, &scene_setup_srv_1),  // store/delete scene   
+    ESP_BLE_MESH_MODEL_SCENE_SRV(&scene_pub_1, &scene_srv_1),   
+    ESP_BLE_MESH_MODEL_SCENE_SETUP_SRV(NULL, &scene_setup_srv_1),    
 };
 #endif
 
 #if CONFIG_MAX_NUM_ELEMENT >=3
 esp_ble_mesh_model_t sig_models2[] = {
     ESP_BLE_MESH_MODEL_GEN_ONOFF_SRV(&onoff_pub_2, &onoff_server_2),
-    ESP_BLE_MESH_MODEL_SCENE_SRV(&scene_pub_2, &scene_srv_2),    // recall scene
-    ESP_BLE_MESH_MODEL_SCENE_SETUP_SRV(NULL, &scene_setup_srv_2),  // store/delete scene 
+    ESP_BLE_MESH_MODEL_SCENE_SRV(&scene_pub_2, &scene_srv_2),   
+    ESP_BLE_MESH_MODEL_SCENE_SETUP_SRV(NULL, &scene_setup_srv_2),  
 };
 #endif
 
 #if CONFIG_MAX_NUM_ELEMENT >=4
 esp_ble_mesh_model_t sig_models3[] = {
     ESP_BLE_MESH_MODEL_GEN_ONOFF_SRV(&onoff_pub_3, &onoff_server_3),
-    ESP_BLE_MESH_MODEL_SCENE_SRV(&scene_pub_3, &scene_srv_3),    // recall scene
-    ESP_BLE_MESH_MODEL_SCENE_SETUP_SRV(NULL, &scene_setup_srv_3),  // store/delete scene 
+    ESP_BLE_MESH_MODEL_SCENE_SRV(&scene_pub_3, &scene_srv_3),   
+    ESP_BLE_MESH_MODEL_SCENE_SETUP_SRV(NULL, &scene_setup_srv_3),   
 };
 #endif
 
@@ -691,13 +695,15 @@ static void example_ble_mesh_config_server_cb(esp_ble_mesh_cfg_server_cb_event_t
                      param->value.state_change.mod_sub_add.company_id,
                      param->value.state_change.mod_sub_add.model_id);
             uint16_t sub_addr = param->value.state_change.mod_sub_add.sub_addr;
-            ble_mesh_add_group(param->value.state_change.mod_sub_add.sub_addr);
+            ble_mesh_add_group(param->value.state_change.mod_sub_add.element_addr, param->value.state_change.mod_sub_add.sub_addr);
             esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_SUB_ADD_GROUP, &sub_addr, sizeof(sub_addr), pdMS_TO_TICKS(10));
             break;
         case ESP_BLE_MESH_MODEL_OP_MODEL_SUB_DELETE:
-            ESP_LOGI(TAG, "ESP_BLE_MESH_MODEL_OP_MODEL_SUB_DELETE delete group id: %04x", param->value.state_change.mod_sub_delete.sub_addr);
+            ESP_LOGI(TAG, "ESP_BLE_MESH_MODEL_OP_MODEL_SUB_DELETE delete group id: %04x, element address: %04x",
+                     param->value.state_change.mod_sub_delete.sub_addr,
+                     param->value.state_change.mod_sub_delete.element_addr);
             uint16_t gr_addr = param->value.state_change.mod_sub_delete.sub_addr;
-            ble_mesh_del_group(param->value.state_change.mod_sub_delete.sub_addr);
+            ble_mesh_del_group(param->value.state_change.mod_sub_delete.element_addr, param->value.state_change.mod_sub_delete.sub_addr);
             esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_SUB_DELETE_GROUP, &gr_addr, sizeof(gr_addr), pdMS_TO_TICKS(10));
         default:
             break;
@@ -843,7 +849,7 @@ void ble_mesh_time_scene_server_callback(esp_ble_mesh_time_scene_server_cb_event
     {
     case ESP_BLE_MESH_TIME_SCENE_SERVER_STATE_CHANGE_EVT:
         uint16_t scene_number = param->value.state_change.scene_store.scene_number;
-        uint16_t ele_idx = param->ctx.recv_dst - esp_ble_mesh_get_primary_element_address();
+        uint16_t ele_idx = param->model->element_idx; //param->ctx.recv_dst - esp_ble_mesh_get_primary_element_address();
         uint32_t value = (ele_idx << 16) | scene_number;
         if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_STORE)
         {
@@ -1098,7 +1104,9 @@ void rd_ble_mesh_init(void)
     nvs_flash_init_partition("ble_mesh");
     ble_mesh_get_dev_uuid(dev_uuid);
     init_scene_values(); //NOTE init scene value
+    #if CONFIG_BLE_MESH_SENSOR_SERVER
     sensor_model_init(); // init sensor value
+    #endif
     /* Initialize the Bluetooth Mesh Subsystem */
     err = ble_mesh_init();
     if (err) {
@@ -1270,13 +1278,23 @@ static esp_err_t rd_ble_mesh_server_model_update_state(esp_ble_mesh_model_t *mod
 /*------------------------------------------------------------------------------------------------*/
 
 esp_err_t ble_mesh_client_model_scene_send_msg(uint32_t opcode, uint16_t dst_addr, uint8_t *par, uint16_t len){
-    esp_ble_mesh_msg_ctx_t ctx;
+    esp_ble_mesh_msg_ctx_t ctx = {0};
     ctx.net_idx = 0x0000;
     ctx.app_idx = 0x0000;
     ctx.addr = dst_addr; 
     ctx.send_ttl = ESP_BLE_MESH_TTL_DEFAULT;
     ctx.send_rel = 0;  
     return rd_ble_mesh_client_model_send_msg(scene_client.model, &ctx, opcode, len, par, 0, false); // ~ &root_model[7]
+}
+
+esp_err_t ble_mesh_client_model_generic_send_msg(uint32_t opcode, uint16_t dst_addr, uint8_t *par, uint16_t len){
+    esp_ble_mesh_msg_ctx_t ctx = {0};
+    ctx.net_idx = 0x0000;
+    ctx.app_idx = 0x0000;
+    ctx.addr = dst_addr; 
+    ctx.send_ttl = ESP_BLE_MESH_TTL_DEFAULT;
+    ctx.send_rel = 0;  
+    return rd_ble_mesh_client_model_send_msg(onoff_client_0.model, &ctx, opcode, len, par, 0, false); 
 }
 
 esp_err_t ble_mesh_model_sensor_send_msg(uint8_t *par, uint16_t len){
@@ -1336,22 +1354,20 @@ uint8_t ble_mesh_get_element_index(ble_mesh_cb_param_t param){
     return ele_idx;
 }
 
-void ble_mesh_add_group(uint16_t id_group){
-    uint16_t primary_addr = esp_ble_mesh_get_primary_element_address();
+void ble_mesh_add_group(uint16_t elem_addr, uint16_t id_group){
+    // uint16_t primary_addr = esp_ble_mesh_get_primary_element_address();
     uint16_t model_id = ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV;
     uint16_t company_id = 0xffff; // SIG_MODEL: company_id = 0xffff
-
     ESP_LOGI(TAG, "add group: 0x%04x", id_group);
-    esp_ble_mesh_model_subscribe_group_addr(primary_addr, company_id, model_id, id_group);
+    esp_ble_mesh_model_subscribe_group_addr(elem_addr, company_id, model_id, id_group);
 }
 
-void ble_mesh_del_group(uint16_t id_group){
-    uint16_t primary_addr = esp_ble_mesh_get_primary_element_address();
+void ble_mesh_del_group(uint16_t elem_addr, uint16_t id_group){
+    // uint16_t primary_addr = esp_ble_mesh_get_primary_element_address();
     uint16_t model_id = ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV;
     uint16_t company_id = 0xffff; // SIG_MODEL: company_id = 0xffff
-
     ESP_LOGI(TAG, "delete group: 0x%04x", id_group);
-    esp_ble_mesh_model_unsubscribe_group_addr(primary_addr, company_id, model_id, id_group);
+    esp_ble_mesh_model_unsubscribe_group_addr(elem_addr, company_id, model_id, id_group);
 
 }
 
