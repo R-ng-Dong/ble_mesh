@@ -666,6 +666,7 @@ static void example_ble_mesh_provisioning_cb(esp_ble_mesh_prov_cb_event_t event,
 static void example_ble_mesh_config_server_cb(esp_ble_mesh_cfg_server_cb_event_t event,
                                               esp_ble_mesh_cfg_server_cb_param_t *param)
 {
+    group_ev_data_t gr_data = {0};
     if (event == ESP_BLE_MESH_CFG_SERVER_STATE_CHANGE_EVT)
     {
         switch (param->ctx.recv_op)
@@ -694,17 +695,19 @@ static void example_ble_mesh_config_server_cb(esp_ble_mesh_cfg_server_cb_event_t
                      param->value.state_change.mod_sub_add.sub_addr,
                      param->value.state_change.mod_sub_add.company_id,
                      param->value.state_change.mod_sub_add.model_id);
-            uint16_t sub_addr = param->value.state_change.mod_sub_add.sub_addr;
+            gr_data.gr_addr = param->value.state_change.mod_sub_add.sub_addr;
+            gr_data.ele_idx = param->value.state_change.mod_sub_add.element_addr - esp_ble_mesh_get_primary_element_address(); 
             ble_mesh_add_group(param->value.state_change.mod_sub_add.element_addr, param->value.state_change.mod_sub_add.sub_addr);
-            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_SUB_ADD_GROUP, &sub_addr, sizeof(sub_addr), pdMS_TO_TICKS(10));
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_SUB_ADD_GROUP, &gr_data, sizeof(gr_data), pdMS_TO_TICKS(10));
             break;
         case ESP_BLE_MESH_MODEL_OP_MODEL_SUB_DELETE:
             ESP_LOGI(TAG, "ESP_BLE_MESH_MODEL_OP_MODEL_SUB_DELETE delete group id: %04x, element address: %04x",
                      param->value.state_change.mod_sub_delete.sub_addr,
                      param->value.state_change.mod_sub_delete.element_addr);
-            uint16_t gr_addr = param->value.state_change.mod_sub_delete.sub_addr;
+            gr_data.gr_addr = param->value.state_change.mod_sub_delete.sub_addr;
+            gr_data.ele_idx = param->value.state_change.mod_sub_delete.element_addr - esp_ble_mesh_get_primary_element_address();
             ble_mesh_del_group(param->value.state_change.mod_sub_delete.element_addr, param->value.state_change.mod_sub_delete.sub_addr);
-            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_SUB_DELETE_GROUP, &gr_addr, sizeof(gr_addr), pdMS_TO_TICKS(10));
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_CONFIG_SERVER, EVENT_MESH_SUB_DELETE_GROUP, &gr_data, sizeof(gr_data), pdMS_TO_TICKS(10));
         default:
             break;
         }
@@ -848,30 +851,30 @@ void ble_mesh_time_scene_server_callback(esp_ble_mesh_time_scene_server_cb_event
     switch (event)
     {
     case ESP_BLE_MESH_TIME_SCENE_SERVER_STATE_CHANGE_EVT:
-        uint16_t scene_number = param->value.state_change.scene_store.scene_number;
-        uint16_t ele_idx = param->model->element_idx; //param->ctx.recv_dst - esp_ble_mesh_get_primary_element_address();
-        uint32_t value = (ele_idx << 16) | scene_number;
+        scene_ev_data_t scene_value = {0};
+        scene_value.scene_id = param->value.state_change.scene_store.scene_number;
+        scene_value.ele_idx = param->model->element_idx; //param->ctx.recv_dst - esp_ble_mesh_get_primary_element_address();
         if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_STORE)
         {
-            ESP_LOGI(TAG, "store Scene 0x%04X, Element Index: 0x%04X", scene_number, ele_idx);
-            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_STORE_SCENE, &value, sizeof(value), pdMS_TO_TICKS(10));
+            ESP_LOGI(TAG, "store Scene 0x%04X, Element Index: 0x%04X", scene_value.scene_id, scene_value.ele_idx);
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_STORE_SCENE, &scene_value, sizeof(scene_value), pdMS_TO_TICKS(10));
         }
         else if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_DELETE)
         {
-            ESP_LOGI(TAG, "delete Scene 0x%04X, Element Index: 0x%04X", scene_number, ele_idx);
-            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_DELETE_SCENE, &value, sizeof(value), pdMS_TO_TICKS(10));
+            ESP_LOGI(TAG, "delete Scene 0x%04X, Element Index: 0x%04X", scene_value.scene_id, scene_value.ele_idx);
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_DELETE_SCENE, &scene_value, sizeof(scene_value), pdMS_TO_TICKS(10));
         }
         else if (param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_RECALL)
         {
-            ESP_LOGI(TAG, "recall Scene 0x%04X, Element Index: 0x%04X", scene_number, ele_idx);
-            if(scene_number == 0x0000) return;
-            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_RECALL_SCENE, &value, sizeof(value), pdMS_TO_TICKS(10));
+            ESP_LOGI(TAG, "recall Scene 0x%04X", scene_value.scene_id);
+            if(scene_value.scene_id == 0x0000) return;
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_RECALL_SCENE, &scene_value, sizeof(scene_value), pdMS_TO_TICKS(10));
         }
         else if(param->ctx.recv_op == ESP_BLE_MESH_MODEL_OP_SCENE_RECALL_UNACK)
         {
-            ESP_LOGI(TAG, "recall Scene 0x%04X, Element Index: 0x%04X", scene_number, ele_idx);
-            if(scene_number == 0x0000) return;
-            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_RECALL_SCENE_UNACK, &value, sizeof(value), pdMS_TO_TICKS(10));           
+            ESP_LOGI(TAG, "recall Scene 0x%04X", scene_value.scene_id);
+            if(scene_value.scene_id == 0x0000) return;
+            esp_event_post_to(ble_mesh_event_loop, EVENT_MESH_SCENE_MODEL, EVENT_MESH_RECALL_SCENE_UNACK, &scene_value, sizeof(scene_value), pdMS_TO_TICKS(10));           
         }
         break;
     default:

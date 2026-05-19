@@ -88,6 +88,16 @@ typedef enum {
     EVENT_MESH_RECALL_SCENE_UNACK
 } rd_mesh_scene_model_event_t;
 
+typedef struct {
+    uint16_t gr_addr;
+    uint16_t ele_idx;
+}group_ev_data_t;
+
+typedef struct{
+    uint16_t scene_id;
+    uint16_t ele_idx;
+}scene_ev_data_t;
+
 
 void      rd_ble_mesh_init(void);
 void      rd_continue_ble_mesh(void);
