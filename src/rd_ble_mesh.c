@@ -70,9 +70,9 @@ static uint8_t dev_uuid[16] = {0x28, 0x04};
 // Khởi tạo các giá trị để cấu hình server
 static esp_ble_mesh_cfg_srv_t config_server = {
     /* 3 transmissions with 20ms interval */
-    .net_transmit = ESP_BLE_MESH_TRANSMIT(2, 20),
+    .net_transmit = ESP_BLE_MESH_TRANSMIT(5, 30),
     .relay = ESP_BLE_MESH_RELAY_ENABLED,
-    .relay_retransmit = ESP_BLE_MESH_TRANSMIT(2, 20),
+    .relay_retransmit = ESP_BLE_MESH_TRANSMIT(5, 30),
     .beacon = ESP_BLE_MESH_BEACON_ENABLED,
 #if defined(CONFIG_BLE_MESH_GATT_PROXY_SERVER)
     .gatt_proxy = ESP_BLE_MESH_GATT_PROXY_ENABLED,
